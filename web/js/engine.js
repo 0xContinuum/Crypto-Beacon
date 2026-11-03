@@ -23,6 +23,7 @@
     '1h':  { ms: 3600000,  label: '1s',  atrMult: 1.6, maxBars: 72, horizon: 'short', api: '1h' },
     '4h':  { ms: 14400000, label: '4s',  atrMult: 1.8, maxBars: 60, horizon: 'long',  api: '4h' },
     '1d':  { ms: 86400000, label: '1G',  atrMult: 2.0, maxBars: 30, horizon: 'long',  api: '1d' },
+    '1w':  { ms: 604800000, label: '1H', atrMult: 2.2, maxBars: 20, horizon: 'long',  api: '1w' },
   };
   const P = {
     entry: 40,        // |skor| bu eşiği aşağıdan/yukarıdan keserse tetik
@@ -33,7 +34,7 @@
     fee: 0.001,       // taraf başına komisyon (spot varsayılanı)
     slip: 0.0005,     // taraf başına kayma
     weights: { T: 0.35, M: 0.25, V: 0.20, K: 0.20 },
-    horizon: { short: { '15m': 0.4, '1h': 0.6 }, long: { '4h': 0.45, '1d': 0.55 } },
+    horizon: { short: { '15m': 0.4, '1h': 0.6 }, long: { '4h': 0.30, '1d': 0.40, '1w': 0.30 } },
   };
 
   /* ——— Göstergeler ——— */

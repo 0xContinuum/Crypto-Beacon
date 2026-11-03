@@ -4,6 +4,7 @@
  */
 (function (root) {
   'use strict';
+  const at = (ln, i) => (ln.i1 === ln.i0 ? ln.p0 : ln.p0 + ((ln.p1 - ln.p0) / (ln.i1 - ln.i0)) * (i - ln.i0));
   const MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
   const pad2 = (n) => String(n).padStart(2, '0');
 
@@ -36,7 +37,7 @@
       this.cv = canvas; this.ctx = canvas.getContext('2d');
       this.d = null;
       this.barW = 7; this.shift = 0; this.rightPad = 6;
-      this.layers = { ema: true, bb: false, vol: true, rsi: false, markers: true, pos: true };
+      this.layers = { ema: true, bb: false, vol: true, rsi: false, markers: true, pos: true, form: true };
       this.hover = -1; this.my = 0;
       this.onHover = opts.onHover || function () {};
       this.sweep = 1; this._raf = 0; this._pts = new Map();
@@ -185,14 +186,16 @@
         c.fillText(fmtAxis(p, step), W - 6, yy);
       }
       const tfMs = d.tfMs, stepBars = [1, 2, 3, 4, 6, 8, 12, 24, 48, 96].find((s) => s * this.barW >= 70) || 192;
-      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.textAlign = 'center'; c.textBaseline = 'middle'; let lastLab = '';
       for (let i = Math.ceil(i0 / stepBars) * stepBars; i <= i1 + this.rightPad; i += stepBars) {
         const xx = Math.round(this.x(i)) + 0.5; if (xx < 20 || xx > pw - 14) continue;
         const t = new Date(cs[cs.length - 1].t + (i - (cs.length - 1)) * tfMs);
         let label, strong = false;
         if (tfMs < 86400000) { if (t.getHours() === 0 && t.getMinutes() === 0) { label = t.getDate() + ' ' + MONTHS[t.getMonth()]; strong = true; } else label = pad2(t.getHours()) + ':' + pad2(t.getMinutes()); }
-        else if (t.getDate() <= stepBars * (tfMs / 86400000) && t.getDate() <= 7 && stepBars > 1) { label = MONTHS[t.getMonth()]; strong = true; }
-        else label = String(t.getDate());
+        else if (stepBars * tfMs / 86400000 < 25) {
+          if (t.getDate() <= stepBars * (tfMs / 86400000)) { label = MONTHS[t.getMonth()]; strong = true; } else label = String(t.getDate());
+        } else { label = MONTHS[t.getMonth()] + (t.getMonth() === 0 ? ' ' + t.getFullYear() : ''); strong = t.getMonth() === 0; }
+        if (label === lastLab) continue; lastLab = label;
         c.strokeStyle = col.grid; c.beginPath(); c.moveTo(xx, priceTop); c.lineTo(xx, paneBottom); c.stroke();
         c.fillStyle = strong ? col.foam : col.fog; c.font = `${strong ? 600 : 500} 11px ${col.font}`;
         c.fillText(label, xx, H - this.timeH / 2);
@@ -254,6 +257,22 @@
         const yo = Math.round(y(k.o)), yc = Math.round(y(k.c)), bt = Math.min(yo, yc), bh = Math.max(1, Math.abs(yo - yc));
         if (up) { c.globalAlpha = 0.92; c.fillRect(xx - Math.floor(bw / 2), bt, bw, bh); c.globalAlpha = 1; }
         else c.fillRect(xx - Math.floor(bw / 2), bt, bw, bh);
+      }
+
+      /* formasyon çizgileri (Formasyon Merkezi) */
+      if (L.form && d.formation) {
+        const f = d.formation, iEnd = this.R + 0.5;
+        c.lineWidth = 1.8; c.strokeStyle = f.color; c.globalAlpha = 0.95;
+        f.lines.forEach((ln, k) => {
+          const x0 = this.x(ln.i0), y0 = y(ln.p0), iT = ln.ext ? iEnd : ln.i1, pT = at(ln, iT);
+          const x1 = ln.ext ? pw : this.x(ln.i1), y1 = y(pT);
+          c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+          c.fillStyle = f.color; c.beginPath(); c.arc(x0, y0, 3, 0, 7); c.fill();
+          if (!ln.ext) { c.beginPath(); c.arc(x1, y1, 3, 0, 7); c.fill(); }
+        });
+        c.globalAlpha = 1; c.lineWidth = 1;
+        c.font = `600 11px ${col.font}`; c.textAlign = 'left'; c.textBaseline = 'top'; c.fillStyle = f.color;
+        c.fillText(f.name + ' · ' + f.status, 8, priceTop + 4);
       }
 
       /* tetik işaretleri */

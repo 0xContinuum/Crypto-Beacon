@@ -9,7 +9,7 @@ const ROOT = path.resolve(__dirname, '..', 'web');
 const SHOTS = path.join(__dirname, 'shots');
 fs.mkdirSync(SHOTS, { recursive: true });
 const PAGE = 'file://' + path.join(ROOT, 'index.html');
-const MS = { '15m': 9e5, '1h': 36e5, '4h': 144e5, '1d': 864e5 };
+const MS = { '15m': 9e5, '1h': 36e5, '4h': 144e5, '1d': 864e5, '1w': 6048e5 };
 const BASE = { BTC: 67000, ETH: 3400, SOL: 160, BNB: 590, XRP: 0.55, ADA: 0.45, DOGE: 0.16, AVAX: 36, LINK: 15, TON: 6.5 };
 
 function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -36,6 +36,11 @@ function series(sym, tf, n) {
   async function newPage(opts = {}) {
     const ctx = await browser.newContext({ viewport: opts.viewport || { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: !!opts.touch, locale: 'tr-TR', timezoneId: 'Europe/Istanbul' });
     const page = await ctx.newPage();
+    if (opts.tgUser || opts.grants) await page.addInitScript(({ u, g }) => {
+      if (u) window.Telegram = { WebApp: { initDataUnsafe: { user: { id: u } }, ready() {}, expand() {} } };
+      if (g) { let c; Object.defineProperty(window, 'BEACON_CONFIG', { configurable: true, get() { return c; }, set(v) { c = Object.assign(v, { grants: g }); } }); }
+    }, { u: opts.tgUser, g: opts.grants });
+    if (opts.legal) await page.addInitScript(() => localStorage.setItem('bcn', JSON.stringify({ legal: true })));
     page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
     page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|net::ERR/.test(m.text())) errors.push('console: ' + m.text()); });
     await page.route(/telegram\.org|adsgram\.ai/, (r) => r.abort());
@@ -86,15 +91,25 @@ function series(sym, tf, n) {
   await page.click('#zoomOut'); await page.click('#zoomOut');
   ok((await page.evaluate(() => window.__beacon.chart.barW)) < bw0 * 1.5, 'uzaklaştır düğmesi çalışır');
 
-  for (const tf of ['15m', '4h', '1d', '1h']) {
+  for (const tf of ['15m', '4h', '1d', '1w', '1h']) {
     await page.click(`#tfSeg [data-tf="${tf}"]`);
     await page.waitForFunction((t) => window.__beacon.state().tf === t && document.querySelector('#skel').style.display === 'none', tf, { timeout: 8000 });
   }
-  ok(true, 'dört zaman dilimi de yüklenir');
+  ok(true, 'beş zaman dilimi (15d, 1s, 4s, 1G, 1H) yüklenir');
   await page.click('#layers [data-l="rsi"]'); await page.click('#layers [data-l="bb"]');
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(SHOTS, '04-radar-rsi-bb.png') });
   ok(await page.getAttribute('#layers [data-l="rsi"]', 'aria-pressed') === 'true', 'RSI katmanı açılır');
+
+  ok(/Aktif formasyon yok|Üçgen|Takoz|İkili/.test(await page.textContent('#form')), 'formasyon bölümü içerik gösteriyor');
+  await page.click('#formCfg');
+  ok(await page.locator('#formSheet.on').count() === 1, 'formasyon ayarları açılır');
+  await page.evaluate(() => { const e = document.getElementById('pivR'); e.value = 5; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
+  ok((await page.evaluate(() => window.__beacon.state().form.pivot)) === 5, 'pivot hassasiyeti ayarı kaydedilir');
+  await page.screenshot({ path: path.join(SHOTS, '12-form-settings.png') });
+  await page.click('#formReset');
+  ok((await page.evaluate(() => window.__beacon.state().form.pivot)) === 10, 'varsayılana dön çalışır');
+  await page.click('#formOk');
 
   /* coin sheet: kilitli coin */
   await page.click('#symBtn');
@@ -107,8 +122,8 @@ function series(sym, tf, n) {
 
   /* 2) Tarayıcı (ücretsiz) */
   await page.click('#dock [data-v="scan"]');
-  await page.waitForFunction(() => document.querySelectorAll('#heat .cell[data-s]').length >= 12, null, { timeout: 10000 });
-  ok((await page.locator('#heat .cell.lock').count()) === 28, 'ücretsiz katmanda 7 coin kilitli (28 hücre)');
+  await page.waitForFunction(() => document.querySelectorAll('#heat .cell[data-s]').length >= 15, null, { timeout: 10000 });
+  ok((await page.locator('#heat .cell.lock').count()) === 35, 'ücretsiz katmanda 7 coin kilitli (35 hücre)');
   await page.screenshot({ path: path.join(SHOTS, '06-scan-free.png'), fullPage: true });
   await page.click('#sortChips [data-sort="long"]');
   ok(true, 'sıralama değişir');
@@ -122,6 +137,9 @@ function series(sym, tf, n) {
   await page.screenshot({ path: path.join(SHOTS, '07-perf.png'), fullPage: true });
   const eqPaint = await page.evaluate(() => { const c = document.getElementById('eq'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; });
   ok(eqPaint > 200, 'özsermaye eğrisi çizildi');
+  await page.click('#perfTf [data-tf="1w"]');
+  await page.waitForFunction(() => /1H/.test(document.getElementById('perfTitle').textContent), null, { timeout: 5000 });
+  ok(true, 'performans sekmesinde haftalık test açılır');
   await page.click('#perfTf [data-tf="4h"]');
   await page.waitForFunction(() => /4s/.test(document.getElementById('perfTitle').textContent), null, { timeout: 5000 });
   ok(true, 'performans zaman dilimi değişir');
@@ -139,14 +157,56 @@ function series(sym, tf, n) {
   ok(st.proUntil - Date.now() <= 120 * 60000 + 2000, 'Pro süresi 2 saati aşmaz');
   ok(st.ads.n <= 6, 'günlük reklam sınırı aşılmaz (' + st.ads.n + ')');
   await page.click('#dock [data-v="scan"]');
-  await page.waitForFunction(() => document.querySelectorAll('#heat .cell[data-s]').length === 40, null, { timeout: 15000 });
-  ok((await page.locator('#heat .cell.lock').count()) === 0, 'Pro açıkken tarayıcıda 10 coin x 4 zaman dilimi açık');
+  await page.waitForFunction(() => document.querySelectorAll('#heat .cell[data-s]').length === 50, null, { timeout: 15000 });
+  ok((await page.locator('#heat .cell.lock').count()) === 0, 'Pro açıkken tarayıcıda 10 coin x 5 zaman dilimi açık');
   await page.screenshot({ path: path.join(SHOTS, '09-scan-pro.png'), fullPage: true });
   await page.click('#heat .cell[data-s="XRP"][data-tf="1h"]');
   await page.waitForSelector('#v-radar.on');
   ok(await page.evaluate(() => window.__beacon.state().sym) === 'XRP', 'hücreye dokunmak radara o coinle geçirir');
   await page.waitForFunction(() => document.getElementById('symName').textContent === 'XRP' && document.querySelector('#skel').style.display === 'none', null, { timeout: 8000 });
   ok(/0[,.]\d/.test(await page.textContent('#price')), 'küçük fiyatlı coin için ondalıklar gösterilir (' + (await page.textContent('#price')) + ')');
+  await page.close();
+
+  /* 4b) Sahip modu */
+  page = await newPage({ legal: true, tgUser: 6394985954 });
+  await page.goto(PAGE);
+  await page.waitForFunction(() => document.getElementById('verd').textContent !== 'Hesaplanıyor', null, { timeout: 8000 });
+  ok(await page.evaluate(() => window.__beacon.isOwner() && window.__beacon.isPro()), 'sahip kimliği tanınır ve Pro sayılır');
+  await page.click('#dock [data-v="pro"]');
+  ok((await page.textContent('#proState')) === 'Sahip', 'Pro sekmesinde "Sahip" yazar');
+  ok(await page.locator('#adBtn').isHidden(), 'sahipte reklam butonu gizli');
+  ok((await page.textContent('#myId')) === '6394985954', 'Telegram kimliği gösterilir');
+  ok(await page.locator('#ownerSec').isVisible(), 'sahip paneli görünür');
+  await page.fill('#gId', '111222333'); await page.selectOption('#gDays', '30'); await page.fill('#gNote', 'Ali');
+  await page.click('#gMake');
+  const line = await page.textContent('#gOut');
+  ok(/^\{ id: 111222333, until: '\d{4}-\d\d-\d\d', note: 'Ali' \},$/.test(line), 'hibe satırı doğru biçimde üretilir: ' + line);
+  await page.fill('#gId', 'abc'); await page.click('#gMake');
+  ok(await page.locator('#toast.on').count() === 1, 'geçersiz kimlik reddedilir');
+  await page.screenshot({ path: path.join(SHOTS, '13-owner.png'), fullPage: true });
+  await page.click('#dock [data-v="scan"]');
+  await page.waitForFunction(() => document.querySelectorAll('#heat .cell[data-s]').length === 50, null, { timeout: 15000 });
+  ok((await page.locator('#heat .cell.lock').count()) === 0, 'sahipte tüm coinler ve zaman dilimleri açık');
+  await page.click('#symBtn'); await page.click('#coinList [data-s="TON"]');
+  await page.waitForFunction(() => window.__beacon.state().sym === 'TON', null, { timeout: 5000 });
+  ok(true, 'sahip kilitli coine doğrudan geçebilir');
+  await page.close();
+
+  /* 4c) Hibe: süresi dolmamış / dolmuş / başka kimlik */
+  const gr = [{ id: 777000111, until: '2099-01-01', note: 'x' }, { id: 555000222, until: '2020-01-01' }, { id: 888000333 }];
+  for (const [id, want, label] of [[777000111, 'Pro', 'süreli hibe'], [888000333, 'Pro', 'süresiz hibe'], [555000222, 'Kapalı', 'süresi dolmuş hibe'], [999000444, 'Kapalı', 'listede olmayan kimlik']]) {
+    page = await newPage({ legal: true, tgUser: id, grants: gr });
+    await page.goto(PAGE);
+    await page.click('#dock [data-v="pro"]');
+    ok((await page.textContent('#proState')) === want, label + ': Pro durumu "' + want + '"');
+    ok(await page.locator('#ownerSec').isHidden(), label + ': sahip paneli görünmez');
+    await page.close();
+  }
+  page = await newPage({ legal: true });
+  await page.goto(PAGE);
+  await page.click('#dock [data-v="pro"]');
+  ok((await page.textContent('#myId')).includes('Telegram dışında'), 'Telegram dışında kimlik yerine açıklama gösterilir');
+  ok(await page.evaluate(() => !window.__beacon.isOwner()), 'Telegram dışında sahip sayılmaz');
   await page.close();
 
   /* 5) Masaüstü genişlik */

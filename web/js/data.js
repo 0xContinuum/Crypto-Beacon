@@ -9,7 +9,7 @@
     { s: 'BNB', n: 'BNB' }, { s: 'XRP', n: 'XRP' }, { s: 'ADA', n: 'Cardano' }, { s: 'DOGE', n: 'Dogecoin' },
     { s: 'AVAX', n: 'Avalanche' }, { s: 'LINK', n: 'Chainlink' }, { s: 'TON', n: 'Toncoin' },
   ];
-  const TFS = ['15m', '1h', '4h', '1d'];
+  const TFS = ['15m', '1h', '4h', '1d', '1w'];
   const cache = new Map(); // "BTC|1h" -> { candles, at }
   let hostIdx = 0;
 

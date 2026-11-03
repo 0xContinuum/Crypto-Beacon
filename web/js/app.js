@@ -1,7 +1,7 @@
 /*  Beacon: arayüz ve uygulama mantığı */
 (function () {
   'use strict';
-  const B = window.Beacon, D = window.BeaconData, CFG = window.BEACON_CONFIG || {};
+  const B = window.Beacon, F = window.BeaconFormation, D = window.BeaconData, CFG = window.BEACON_CONFIG || {};
   const { fmtPrice } = window.BeaconFmt;
   const $ = (id) => document.getElementById(id);
   const tg = window.Telegram && window.Telegram.WebApp;
@@ -24,9 +24,10 @@
   const haptic = (k) => { try { if (!tg || !tg.HapticFeedback) return; k === 'ok' ? tg.HapticFeedback.notificationOccurred('success') : tg.HapticFeedback.impactOccurred('light'); } catch (e) {} };
 
   /* ——— kalıcı durum (localStorage + Telegram CloudStorage) ——— */
-  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, ema: true, vol: true, bb: false, rsi: false }, proUntil: 0, ads: { d: '', n: 0 }, ts: 0 };
+  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false }, form: { pivot: 10, tol: 1.5 }, proUntil: 0, ads: { d: '', n: 0 }, ts: 0 };
   let S = JSON.parse(JSON.stringify(DEF));
   try { const r = JSON.parse(localStorage.getItem('bcn') || 'null'); if (r) S = Object.assign(S, r, { layers: Object.assign({}, DEF.layers, r.layers || {}) }); } catch (e) {}
+  S.form = Object.assign({}, DEF.form, S.form);
   function save() {
     S.ts = Date.now();
     const j = JSON.stringify(S);
@@ -36,11 +37,15 @@
   try {
     tg && tg.CloudStorage && tg.CloudStorage.getItem('bcn', (err, v) => {
       if (err || !v) return;
-      try { const c = JSON.parse(v); if (c && c.ts > S.ts) { S = Object.assign(S, c, { layers: Object.assign({}, DEF.layers, c.layers || {}) }); applyState(); } } catch (e) {}
+      try { const c = JSON.parse(v); if (c && c.ts > S.ts) { S = Object.assign(S, c, { layers: Object.assign({}, DEF.layers, c.layers || {}) }); S.form = Object.assign({}, DEF.form, S.form); applyState(); if (cur) refreshFormation(); } } catch (e) {}
     });
   } catch (e) {}
 
-  const isPro = () => S.proUntil > Date.now();
+  /* kimlik: Telegram'ın verdiği bilgi, doğrulanmaz (bkz. config.js güvenlik notu) */
+  const uid = (() => { try { const u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user; return u ? Number(u.id) || 0 : 0; } catch (e) { return 0; } })();
+  const isOwner = () => !!uid && (CFG.ownerIds || []).map(Number).includes(uid);
+  const myGrant = () => (uid ? (CFG.grants || []).find((g) => Number(g.id) === uid && (!g.until || Date.parse(g.until + 'T23:59:59Z') > Date.now())) || null : null);
+  const isPro = () => isOwner() || !!myGrant() || S.proUntil > Date.now();
   const today = () => new Date().toISOString().slice(0, 10);
   const adsUsed = () => (S.ads.d === today() ? S.ads.n : 0);
   const coinOf = (s) => D.COINS.find((c) => c.s === s) || D.COINS[0];
@@ -162,11 +167,13 @@
     const last = sim.trades[sim.trades.length - 1] || null;
     const a = r.a;
     cur = { key: sym + '|' + tf, sym, tf, candles, r, trade: last, sim };
-    chart.setData({
+    cur.formation = F.detect(r.closed, S.form);
+    cur.data = {
       key: cur.key, candles, tfMs: r.cfg.ms,
       ema20: a.ema20, ema50: a.ema50, ema200: a.ema200, rsi: a.rsi, bbUp: a.bbUp, bbLo: a.bbLo,
-      markers: r.sigs.map((s) => ({ i: s.i, side: s.side })), position: last,
-    });
+      markers: r.sigs.map((s) => ({ i: s.i, side: s.side })), position: last, formation: cur.formation,
+    };
+    chart.setData(cur.data);
     $('skel').style.display = 'none'; $('chartMsg').classList.remove('on');
 
     const lc = candles[candles.length - 1];
@@ -179,7 +186,7 @@
     setDial(r.score); setFacts({ T: a.T[r.i], M: a.M[r.i], V: a.V[r.i], K: a.K[r.i] });
     const reg = a.regime[r.i], rt = reg === 2 ? 'Güçlü trend ortamı' : reg === 1 ? 'Trend ortamı' : 'Yatay, trendsiz ortam';
     $('regime').textContent = rt + (a.squeeze[r.i] ? ' · volatilite sıkışmış' : '');
-    renderTrigger();
+    renderTrigger(); renderFormation();
   }
 
   function renderTrigger() {
@@ -193,6 +200,28 @@
       `<div class="lvls num"><div><span>Giriş ref.</span><b>${fp(t.entry)}</b></div><div><span>Geçersizlik</span><b class="down">${fp(t.sl)}</b></div><div><span>Hedef 1</span><b class="up">${fp(t.tp1)}</b></div><div><span>Hedef 2</span><b class="up">${fp(t.tp2)}</b></div></div>` +
       `<div class="trig-st">${stTxt} <span class="num ${cls(t.R)}">${st === 'closed' ? '· ' : '· şu an '}${sgnR(t.R)}</span></div>` +
       `<p class="note" style="margin-top:8px">${dt(t.t)} mumunun açılışı referans alındı. Seviyeler ATR'ye dayanır; bir senaryodur, işlem çağrısı değildir.</p>`;
+  }
+
+  const fp2 = (x) => (isNum(x) ? fmtPrice(x) : '–');
+  function renderFormation() {
+    const el = $('form'), f = cur && cur.formation;
+    if (!f) { el.innerHTML = '<div class="trig-h"><span class="badge flat">Aktif formasyon yok</span></div><p class="note" style="margin-top:10px">Son pivotlar bilinen bir yapı oluşturmuyor. Hassasiyeti ayarlardan değiştirebilirsiniz.</p>'; return; }
+    const tone = /Yukarı/.test(f.status) ? 'up' : /Aşağı/.test(f.status) ? 'down' : '';
+    const lv = [];
+    if (f.levels.upper != null) lv.push(['Üst çizgi', f.levels.upper]);
+    if (f.levels.lower != null) lv.push(['Alt çizgi', f.levels.lower]);
+    if (f.levels.neck != null) lv.push(['Boyun çizgisi', f.levels.neck]);
+    const pt = cur.candles[f.lastPivot] ? cur.candles[f.lastPivot].t : Date.now();
+    el.innerHTML =
+      `<div class="trig-h"><span class="badge" style="color:${f.color};background:${f.color}22">${f.name}</span><span class="dim num" style="font-size:12.5px">${TFL(cur.tf)} · son pivot ${ago(pt)}</span></div>` +
+      `<div class="trig-st"><span class="${tone}">${f.status}</span> <span class="dim" style="font-weight:500">· ${f.bias}</span></div>` +
+      `<div class="fm-lv num" style="grid-template-columns:repeat(${lv.length},1fr)">${lv.map(([n, v]) => `<div><span>${n}</span><b>${fp2(v)}</b></div>`).join('')}</div>` +
+      '<p class="note">Çizgiler son iki tepe ve son iki dipten otomatik çizilir. Formasyonlar öznel yapılardır, kırılımlar yanıltıcı olabilir. İşlem çağrısı değildir.</p>';
+  }
+  function refreshFormation() {
+    if (!cur || !cur.data) return;
+    cur.formation = F.detect(cur.r.closed, S.form); cur.data.formation = cur.formation;
+    chart.setData(cur.data); renderFormation();
   }
 
   function onHover(i) {
@@ -218,7 +247,7 @@
       $(d).textContent = vd.text; $(d).style.color = VCOL[vd.key];
       $(m).textContent = tfs.map((t) => TFL(t) + ' ' + (isNum(scores[t]) ? sgn(Math.round(scores[t])) : '–')).join('   ');
     };
-    put('short', 'hsS', 'hdS', 'hmS', ['15m', '1h']); put('long', 'hsL', 'hdL', 'hmL', ['4h', '1d']);
+    put('short', 'hsS', 'hdS', 'hmS', ['15m', '1h']); put('long', 'hsL', 'hdL', 'hmL', ['4h', '1d', '1w']);
   }
 
   /* ——— Tarayıcı ——— */
@@ -358,6 +387,15 @@
     renderPro();
   }
   function renderPro() {
+    $('myId').textContent = uid ? String(uid) : 'Telegram dışında açık';
+    $('ownerSec').hidden = !isOwner();
+    const owner = isOwner(), grant = myGrant(), fixed = owner || !!grant;
+    $('adBtn').hidden = fixed; $('starsBtn').hidden = fixed;
+    if (fixed) {
+      const st0 = $('proState'); st0.textContent = owner ? 'Sahip' : 'Pro'; st0.className = 'st num on';
+      $('proSub').textContent = owner ? 'Tüm coinler ve özellikler süresiz açık.' : 'Hesabınıza tanımlı · ' + (grant.until ? 'bitiş ' + new Date(grant.until + 'T12:00:00').toLocaleDateString('tr-TR') : 'süresiz');
+      return;
+    }
     const left = S.proUntil - Date.now(), on = left > 0, st = $('proState');
     if (on) { const m = Math.floor(left / MIN), s = Math.floor((left % MIN) / 1000); st.textContent = `${m}:${String(s).padStart(2, '0')}`; st.className = 'st num on'; }
     else { st.textContent = 'Kapalı'; st.className = 'st num'; }
@@ -422,6 +460,32 @@
   $('legalBtn').onclick = () => openSheet('legal');
   $('legalOk').onclick = () => { S.legal = true; save(); closeSheet('legal'); haptic('ok'); };
 
+  /* formasyon ayarları */
+  const fmtTol = (v) => String(v).replace('.', ',');
+  function syncForm() { $('pivR').value = S.form.pivot; $('tolR').value = S.form.tol; $('pivV').textContent = S.form.pivot; $('tolV').textContent = fmtTol(S.form.tol); }
+  $('formCfg').onclick = () => { haptic(); syncForm(); openSheet('formSheet'); };
+  $('pivR').addEventListener('input', (e) => { S.form.pivot = +e.target.value; $('pivV').textContent = S.form.pivot; refreshFormation(); });
+  $('tolR').addEventListener('input', (e) => { S.form.tol = Math.round(+e.target.value * 10) / 10; $('tolV').textContent = fmtTol(S.form.tol); refreshFormation(); });
+  $('pivR').addEventListener('change', save); $('tolR').addEventListener('change', save);
+  $('formReset').onclick = () => { S.form = Object.assign({}, DEF.form); save(); syncForm(); refreshFormation(); haptic(); };
+  $('formOk').onclick = () => { save(); closeSheet('formSheet'); };
+
+  /* kimlik kopyala, sahip için hibe satırı üretici */
+  $('copyId').onclick = async () => {
+    if (!uid) { toast('Kimlik yalnızca Telegram içinde görünür'); return; }
+    try { await navigator.clipboard.writeText(String(uid)); toast('Kimlik kopyalandı'); haptic('ok'); } catch (e) { toast('Kopyalanamadı, sayıyı elle seçin'); }
+  };
+  $('gMake').onclick = () => {
+    const id = String($('gId').value).trim();
+    if (!/^\d{5,15}$/.test(id)) { toast('Geçerli bir Telegram kimliği girin (yalnızca rakam)'); return; }
+    const days = +$('gDays').value, note = $('gNote').value.replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 40);
+    const parts = [`id: ${id}`];
+    if (days > 0) parts.push(`until: '${new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)}'`);
+    if (note) parts.push(`note: '${note}'`);
+    const out = $('gOut'); out.textContent = `{ ${parts.join(', ')} },`; out.hidden = false;
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(out.textContent).then(() => toast('Satır kopyalandı')).catch(() => toast('Satır hazır, elle kopyalayın'));
+  };
+
   /* radar kontrolleri */
   function setTf(tf) { S.tf = tf; save(); applyState(); loadRadar(); }
   $('tfSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-tf]'); if (b && b.dataset.tf !== S.tf) { haptic(); setTf(b.dataset.tf); } });
@@ -465,5 +529,5 @@
   loadRadar();
 
   /* test için dışa açılan küçük yüzey */
-  window.__beacon = { go, state: () => S, chart, calc, buildScan, buildPerf };
+  window.__beacon = { go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro };
 })();
