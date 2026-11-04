@@ -13,7 +13,7 @@ web/            yayınlanan uygulama (index.html, css, js, fonts)
   js/data.js    Binance verisi, önbellek, yedek uç noktalar
   js/app.js     arayüz, Pro/Adsgram, Telegram entegrasyonu
   js/config.js  ← Adsgram blok kimliği burada
-tests/          engine.test.js (37), formation.test.js (22), ref.py (bağımsız Python referansı), ui.test.js (61, Playwright)
+tests/          engine.test.js (37), formation.test.js (31), ref.py (bağımsız Python referansı), ui.test.js (65, Playwright)
 render.yaml     Render ücretsiz Static Site
 ```
 
@@ -26,17 +26,17 @@ render.yaml     Render ücretsiz Static Site
 ## Testler
 ```
 python3 tests/ref.py && node tests/engine.test.js     # motor, 37 test
-node tests/formation.test.js                           # formasyon, 22 test
-node tests/ui.test.js                                  # arayüz, sahte veriyle, 61 test
+node tests/formation.test.js                           # formasyon, 31 test
+node tests/ui.test.js                                  # arayüz, sahte veriyle, 65 test
 ```
 
 ## Formasyon Merkezi (Pine'dan taşıma)
 `web/js/formation.js`, "Gelişmiş Formasyon Merkezi V2 [AlperA]" göstergesinin mantığını taşır (orijinal kod © AlperA2259, MPL 2.0; bu dosya türev olduğu için başlığındaki notu koruyun). Aynı: pivot, son iki tepe/dip, yataylık toleransı, üçgen ve takoz kuralları. **Bilerek farklı:**
-- Pine her mumda yeni çizgi çizer ve silmez; burada yalnızca güncel formasyon gösterilir.
+- Pine aynı formasyonu her mumda yeniden çizer (aynı çizgi yüzlerce kez). Burada her benzersiz formasyon bir kez kaydedilir ve **eskiler silinmez**: geçmiş formasyonların çizgileri soluk renkte kalır, güncel olan kalındır (destek/direnç bölgeleri için). Ayarlardan kapatılabilir; varsayılan sınır en yeni 120 formasyondur.
 - Eğim mum başına hesaplanır (Pine iki pivot arasındaki fiyat farkını kıyaslıyor; pivotlar arası mesafe farklıysa yanlış sonuç verir).
 - Üst çizgisi neredeyse yatay olan yapı "yükselen takoz" diye ezilmez, yükselen üçgen kalır.
 - Kırılım durumu gerçekten hesaplanır; ikili tepe/dip eklendi (Pine'da seçenek vardı, mantığı yoktu).
-- 6×hassasiyet mumdan eski formasyon gösterilmez.
+- Yalnızca *güncel* sayılan formasyon için 6×hassasiyet mumluk bayat kontrolü vardır; geçmiş çizgiler bundan etkilenmez.
 Sonuçlar TradingView'dakiyle birebir aynı olmayabilir. Ayarlar (hassasiyet, tolerans) Radar'da Formasyon bölümündeki dişli simgesindedir.
 
 ## Sahip ve Pro verme

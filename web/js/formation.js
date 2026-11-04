@@ -3,12 +3,13 @@
  *
  *  Aynı mantık: pivot tespiti, son iki tepe ve son iki dip, yataylık toleransı, üçgenler ve takozlar.
  *  Pine sürümünden farklar (bilerek):
- *   - Pine her mumda yeni çizgi çizer ve eskileri silmez; burada yalnızca güncel formasyon döner.
+ *   - Pine bir formasyonu her mumda yeniden çizer (aynı çizgi yüzlerce kez). Burada her benzersiz formasyon bir kez
+ *     kaydedilir ve eskiler silinmez: geçmiş formasyonların çizgileri destek/direnç bölgesi olarak kalır (scan).
  *   - Eğim mum başına hesaplanır (Pine iki pivot arasındaki fiyat farkını kullanıyor; pivotlar arası mesafe farklıysa yanlış kıyaslar).
+ *   - Yataylık toleransı içindeki bir kenar takoz sayılmaz (Pine'da üst çizgi %0,2 yükselse bile yükselen üçgen "yükselen takoz" olarak ezilir).
  *   - Kırılım durumu gerçekten hesaplanır ("Takipte" sabit metin değildi).
  *   - İkili tepe/dip eklendi (Pine'da seçenek vardı ama mantığı yoktu).
- *   - Yataylık toleransı içindeki bir kenar takoz sayılmaz (Pine'da üst çizgi %0,2 yükselse bile yükselen üçgen "yükselen takoz" olarak ezilir).
- *   - Bayat formasyon gösterilmez: en yeni pivot 6×hassasiyet mumdan eskiyse veya formasyon 40×hassasiyet mumdan uzunsa yok sayılır.
+ *   - Güncel formasyon için bayat kontrolü: en yeni pivot 6×hassasiyet mumdan eskiyse veya yapı 40×hassasiyet mumdan uzunsa güncel sayılmaz.
  *  Pivot yalnızca sağındaki `n` mum kapanınca onaylanır, yani geriye dönük değişmez (repaint yok).
  */
 (function (root, factory) {
@@ -16,7 +17,7 @@
   else root.BeaconFormation = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const DEF = { pivot: 10, tol: 1.5 };
+  const DEF = { pivot: 10, tol: 1.5, history: true, maxForms: 120 };
 
   function pivots(cs, n) {
     const ph = [], pl = [];
@@ -35,15 +36,11 @@
   const L = (i0, p0, i1, p1, ext) => ({ i0, p0, i1, p1, ext: ext !== false });
   const at = (ln, i) => (ln.i1 === ln.i0 ? ln.p0 : ln.p0 + ((ln.p1 - ln.p0) / (ln.i1 - ln.i0)) * (i - ln.i0));
 
-  /** Güncel formasyonu döndürür, yoksa null. `cs` yalnızca kapanmış mumlardan oluşmalı. */
-  function detect(cs, opts) {
-    const o = Object.assign({}, DEF, opts || {});
-    const n = Math.max(2, Math.round(o.pivot)), tol = o.tol;
-    if (cs.length < 2 * n + 3) return null;
-    const { ph, pl } = pivots(cs, n);
-    if (ph.length < 2 || pl.length < 2) return null;
-    const A = ph[ph.length - 2], B = ph[ph.length - 1], C = pl[pl.length - 2], D = pl[pl.length - 1];
-    const last = cs.length - 1, close = cs[last].c;
+  /** `last` mumundaki duruma göre, ilk cH tepe ve ilk cL dipten oluşan formasyonu değerlendirir. */
+  function evalAt(cs, n, tol, ph, pl, cH, cL, last) {
+    if (cH < 2 || cL < 2) return null;
+    const A = ph[cH - 2], B = ph[cH - 1], C = pl[cL - 2], D = pl[cL - 1];
+    const close = cs[last].c;
     if (last - Math.max(B.i, D.i) > 6 * n) return null;
     if (last - Math.min(A.i, C.i) > 40 * n) return null;
 
@@ -87,9 +84,41 @@
       r = top && bot ? (top.at >= bot.at ? top : bot) : top || bot;
       if (!r) return null;
     }
+    r.id = [r.key, A.i, B.i, C.i, D.i].join('|');
     r.asOf = last; r.firstBar = Math.min(A.i, C.i); r.lastPivot = Math.max(B.i, D.i);
     return r;
   }
 
-  return { detect, pivots, DEF };
+  /** Güncel formasyonu döndürür, yoksa null. `cs` yalnızca kapanmış mumlardan oluşmalı. */
+  function detect(cs, opts) {
+    const o = Object.assign({}, DEF, opts || {});
+    const n = Math.max(2, Math.round(o.pivot));
+    if (cs.length < 2 * n + 3) return null;
+    const { ph, pl } = pivots(cs, n);
+    return evalAt(cs, n, o.tol, ph, pl, ph.length, pl.length, cs.length - 1);
+  }
+
+  /** Güncel formasyon + geçmişte oluşmuş tüm benzersiz formasyonlar (eskiler silinmez).
+   *  Bir formasyon, son pivotu onaylandığı mumda bir kez kaydedilir; yalnızca o ana kadarki veriyi kullanır. */
+  function scan(cs, opts) {
+    const o = Object.assign({}, DEF, opts || {});
+    const n = Math.max(2, Math.round(o.pivot));
+    const out = { current: detect(cs, o), history: [] };
+    if (cs.length < 2 * n + 3) return out;
+    const { ph, pl } = pivots(cs, n), seen = new Set(), hist = [];
+    let cH = 0, cL = 0;
+    for (let t = 0; t < cs.length; t++) {
+      let changed = false;
+      while (cH < ph.length && ph[cH].i + n <= t) { cH++; changed = true; }
+      while (cL < pl.length && pl[cL].i + n <= t) { cL++; changed = true; }
+      if (!changed) continue;
+      const r = evalAt(cs, n, o.tol, ph, pl, cH, cL, t);
+      if (r && !seen.has(r.id)) { seen.add(r.id); r.since = t; hist.push(r); }
+    }
+    const cap = Math.max(1, Math.round(o.maxForms));
+    out.history = hist.length > cap ? hist.slice(hist.length - cap) : hist;
+    return out;
+  }
+
+  return { detect, scan, pivots, DEF };
 });

@@ -189,6 +189,8 @@
     <p>Gösterge, grafikteki son iki tepe ve son iki dipten formasyon arar. Bir pivot, sağındaki mumlar kapanınca onaylanır.</p>
     <label class="rng"><span>Pivot hassasiyeti <b id="pivV" class="num">10</b> mum</span><input type="range" id="pivR" min="3" max="20" step="1"></label>
     <label class="rng"><span>Yataylık toleransı <b id="tolV" class="num">1,5</b> %</span><input type="range" id="tolR" min="0.5" max="3" step="0.1"></label>
+    <label class="chk"><input type="checkbox" id="histC"><span>Eski formasyon çizgilerini grafikte tut (destek ve direnç bölgeleri)</span></label>
+    <label class="rng" id="histRow"><span>Geçmiş formasyon sayısı <b id="histV" class="num">120</b></span><input type="range" id="histR" min="10" max="250" step="10"></label>
     <button class="cta ghost" id="formReset">Varsayılana dön</button>
     <button class="cta" id="formOk">Tamam</button>
   </div></div>

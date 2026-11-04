@@ -106,6 +106,16 @@ function series(sym, tf, n) {
   ok(await page.locator('#formSheet.on').count() === 1, 'formasyon ayarları açılır');
   await page.evaluate(() => { const e = document.getElementById('pivR'); e.value = 5; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
   ok((await page.evaluate(() => window.__beacon.state().form.pivot)) === 5, 'pivot hassasiyeti ayarı kaydedilir');
+  const hl = () => page.evaluate(() => window.__beacon.cur().data.formHistory.length);
+  const h0 = await hl();
+  ok(h0 > 0, 'eski formasyon çizgileri varsayılan olarak açık (' + h0 + ' formasyon)');
+  await page.uncheck('#histC');
+  ok((await hl()) === 0, 'eski çizgiler ayardan kapatılabilir');
+  await page.check('#histC');
+  ok((await hl()) === h0, 'eski çizgiler tekrar açılınca geri gelir');
+  await page.evaluate(() => { const e = document.getElementById('histR'); e.value = 10; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
+  ok((await hl()) <= 10, 'geçmiş formasyon sayısı sınırı uygulanır');
+  await page.evaluate(() => { const e = document.getElementById('histR'); e.value = 120; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.screenshot({ path: path.join(SHOTS, '12-form-settings.png') });
   await page.click('#formReset');
   ok((await page.evaluate(() => window.__beacon.state().form.pivot)) === 10, 'varsayılana dön çalışır');

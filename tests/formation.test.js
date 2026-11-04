@@ -88,4 +88,33 @@ ok(r && r.key === 'dbot' && /yukarı kırıldı/.test(r.status), 'ikili dip: boy
   ok(rr === null, 'çizgiler kesişmişse (tepe noktası geçildi) formasyon döndürülmez');
 }
 
+
+/* geçmiş formasyonlar: eskiler silinmez */
+{
+  // aynı yol iki kez art arda: yükselen üçgen sonra alçalan takoz
+  const seg = (a, b) => { const out = []; for (let k = 1; k <= 8; k++) out.push(a + ((b - a) * k) / 8); return out; };
+  const waypoints = [95, 100, 90, 100.2, 94, 98, 88, 99.5, 89.5, 99.6, 92, 95, 80, 97, 76, 88, 74, 80];
+  const closes = [waypoints[0]]; for (let k = 1; k < waypoints.length; k++) closes.push(...seg(waypoints[k - 1], waypoints[k]));
+  const cs = closes.map((c, i) => { const o = i ? closes[i - 1] : c; return { t: i, o, c, h: Math.max(o, c) + 0.05, l: Math.min(o, c) - 0.05, v: 1 }; });
+  const sc = F.scan(cs, OPT);
+  ok(sc.history.length >= 2, 'tarama birden fazla geçmiş formasyon bulur (' + sc.history.length + ')');
+  ok(new Set(sc.history.map((f) => f.id)).size === sc.history.length, 'aynı formasyon tekrar tekrar kaydedilmez (benzersiz kimlik)');
+  ok(sc.history.every((f, k, a) => k === 0 || f.since >= a[k - 1].since), 'geçmiş zaman sırasıyla gelir');
+  ok(sc.history.every((f) => f.since - f.lastPivot >= OPT.pivot), 'formasyon son pivotu onaylandıktan sonra kaydedilir (repaint yok)');
+  ok(sc.history.every((f) => f.lines.length === 2 && f.lines.every((l) => Number.isFinite(l.p0) && Number.isFinite(l.p1))), 'her kayıtta iki geçerli çizgi var');
+  ok(!sc.current || sc.history.some((f) => f.id === sc.current.id), 'güncel formasyon geçmişte de bulunur');
+  const names = new Set(sc.history.map((f) => f.key));
+  ok(names.size >= 2, 'farklı türler birikir: ' + [...names].join(','));
+  // repaint yok: kesilmiş seri, tam serinin geçmişinin ön ekidir
+  let bad = 0;
+  const full = F.scan(cs, Object.assign({}, OPT, { maxForms: 1000 })).history.map((f) => f.id);
+  for (const k of [60, 90, 120, 150, 180]) {
+    const part = F.scan(cs.slice(0, k), Object.assign({}, OPT, { maxForms: 1000 })).history.map((f) => f.id);
+    if (part.join(',') !== full.slice(0, part.length).join(',')) bad++;
+  }
+  ok(bad === 0, 'seriyi kesmek geçmiş formasyonları değiştirmez (look-ahead yok)');
+  const capped = F.scan(cs, Object.assign({}, OPT, { maxForms: 1 }));
+  ok(capped.history.length === 1 && capped.history[0].id === full[full.length - 1], 'sınır en yeni formasyonları tutar');
+}
+
 console.log(`\nTÜM FORMASYON TESTLERİ GEÇTİ (${pass})`);

@@ -24,7 +24,7 @@
   const haptic = (k) => { try { if (!tg || !tg.HapticFeedback) return; k === 'ok' ? tg.HapticFeedback.notificationOccurred('success') : tg.HapticFeedback.impactOccurred('light'); } catch (e) {} };
 
   /* ——— kalıcı durum (localStorage + Telegram CloudStorage) ——— */
-  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false }, form: { pivot: 10, tol: 1.5 }, proUntil: 0, ads: { d: '', n: 0 }, ts: 0 };
+  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false }, form: { pivot: 10, tol: 1.5, history: true, maxForms: 120 }, proUntil: 0, ads: { d: '', n: 0 }, ts: 0 };
   let S = JSON.parse(JSON.stringify(DEF));
   try { const r = JSON.parse(localStorage.getItem('bcn') || 'null'); if (r) S = Object.assign(S, r, { layers: Object.assign({}, DEF.layers, r.layers || {}) }); } catch (e) {}
   S.form = Object.assign({}, DEF.form, S.form);
@@ -167,11 +167,11 @@
     const last = sim.trades[sim.trades.length - 1] || null;
     const a = r.a;
     cur = { key: sym + '|' + tf, sym, tf, candles, r, trade: last, sim };
-    cur.formation = F.detect(r.closed, S.form);
+    const sc = F.scan(r.closed, S.form); cur.formation = sc.current; cur.hist = sc.history;
     cur.data = {
       key: cur.key, candles, tfMs: r.cfg.ms,
       ema20: a.ema20, ema50: a.ema50, ema200: a.ema200, rsi: a.rsi, bbUp: a.bbUp, bbLo: a.bbLo,
-      markers: r.sigs.map((s) => ({ i: s.i, side: s.side })), position: last, formation: cur.formation,
+      markers: r.sigs.map((s) => ({ i: s.i, side: s.side })), position: last, formation: cur.formation, formHistory: S.form.history ? cur.hist : [],
     };
     chart.setData(cur.data);
     $('skel').style.display = 'none'; $('chartMsg').classList.remove('on');
@@ -205,7 +205,9 @@
   const fp2 = (x) => (isNum(x) ? fmtPrice(x) : '–');
   function renderFormation() {
     const el = $('form'), f = cur && cur.formation;
-    if (!f) { el.innerHTML = '<div class="trig-h"><span class="badge flat">Aktif formasyon yok</span></div><p class="note" style="margin-top:10px">Son pivotlar bilinen bir yapı oluşturmuyor. Hassasiyeti ayarlardan değiştirebilirsiniz.</p>'; return; }
+    const nh = S.form.history && cur && cur.hist ? cur.hist.length : 0;
+    const histNote = nh ? ` Grafikte ${nh} geçmiş formasyonun çizgileri soluk renkte duruyor; destek ve direnç bölgesi olarak kullanabilirsiniz.` : '';
+    if (!f) { el.innerHTML = '<div class="trig-h"><span class="badge flat">Aktif formasyon yok</span></div><p class="note" style="margin-top:10px">Son pivotlar bilinen bir yapı oluşturmuyor. Hassasiyeti ayarlardan değiştirebilirsiniz.' + histNote + '</p>'; return; }
     const tone = /Yukarı/.test(f.status) ? 'up' : /Aşağı/.test(f.status) ? 'down' : '';
     const lv = [];
     if (f.levels.upper != null) lv.push(['Üst çizgi', f.levels.upper]);
@@ -216,11 +218,12 @@
       `<div class="trig-h"><span class="badge" style="color:${f.color};background:${f.color}22">${f.name}</span><span class="dim num" style="font-size:12.5px">${TFL(cur.tf)} · son pivot ${ago(pt)}</span></div>` +
       `<div class="trig-st"><span class="${tone}">${f.status}</span> <span class="dim" style="font-weight:500">· ${f.bias}</span></div>` +
       `<div class="fm-lv num" style="grid-template-columns:repeat(${lv.length},1fr)">${lv.map(([n, v]) => `<div><span>${n}</span><b>${fp2(v)}</b></div>`).join('')}</div>` +
-      '<p class="note">Çizgiler son iki tepe ve son iki dipten otomatik çizilir. Formasyonlar öznel yapılardır, kırılımlar yanıltıcı olabilir. İşlem çağrısı değildir.</p>';
+      '<p class="note">Çizgiler son iki tepe ve son iki dipten otomatik çizilir. Formasyonlar öznel yapılardır, kırılımlar yanıltıcı olabilir. İşlem çağrısı değildir.' + histNote + '</p>';
   }
   function refreshFormation() {
     if (!cur || !cur.data) return;
-    cur.formation = F.detect(cur.r.closed, S.form); cur.data.formation = cur.formation;
+    const sc = F.scan(cur.r.closed, S.form); cur.formation = sc.current; cur.hist = sc.history;
+    cur.data.formation = cur.formation; cur.data.formHistory = S.form.history ? cur.hist : [];
     chart.setData(cur.data); renderFormation();
   }
 
@@ -462,11 +465,14 @@
 
   /* formasyon ayarları */
   const fmtTol = (v) => String(v).replace('.', ',');
-  function syncForm() { $('pivR').value = S.form.pivot; $('tolR').value = S.form.tol; $('pivV').textContent = S.form.pivot; $('tolV').textContent = fmtTol(S.form.tol); }
+  function syncForm() { $('pivR').value = S.form.pivot; $('tolR').value = S.form.tol; $('pivV').textContent = S.form.pivot; $('tolV').textContent = fmtTol(S.form.tol); $('histC').checked = !!S.form.history; $('histR').value = S.form.maxForms; $('histV').textContent = S.form.maxForms; $('histRow').style.opacity = S.form.history ? 1 : 0.4; $('histR').disabled = !S.form.history; }
   $('formCfg').onclick = () => { haptic(); syncForm(); openSheet('formSheet'); };
   $('pivR').addEventListener('input', (e) => { S.form.pivot = +e.target.value; $('pivV').textContent = S.form.pivot; refreshFormation(); });
   $('tolR').addEventListener('input', (e) => { S.form.tol = Math.round(+e.target.value * 10) / 10; $('tolV').textContent = fmtTol(S.form.tol); refreshFormation(); });
   $('pivR').addEventListener('change', save); $('tolR').addEventListener('change', save);
+  $('histC').addEventListener('change', (e) => { S.form.history = e.target.checked; save(); syncForm(); refreshFormation(); });
+  $('histR').addEventListener('input', (e) => { S.form.maxForms = +e.target.value; $('histV').textContent = S.form.maxForms; refreshFormation(); });
+  $('histR').addEventListener('change', save);
   $('formReset').onclick = () => { S.form = Object.assign({}, DEF.form); save(); syncForm(); refreshFormation(); haptic(); };
   $('formOk').onclick = () => { save(); closeSheet('formSheet'); };
 
@@ -529,5 +535,5 @@
   loadRadar();
 
   /* test için dışa açılan küçük yüzey */
-  window.__beacon = { go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro };
+  window.__beacon = { go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
 })();

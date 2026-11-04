@@ -259,20 +259,27 @@
         else c.fillRect(xx - Math.floor(bw / 2), bt, bw, bh);
       }
 
-      /* formasyon çizgileri (Formasyon Merkezi) */
-      if (L.form && d.formation) {
-        const f = d.formation, iEnd = this.R + 0.5;
-        c.lineWidth = 1.8; c.strokeStyle = f.color; c.globalAlpha = 0.95;
-        f.lines.forEach((ln, k) => {
-          const x0 = this.x(ln.i0), y0 = y(ln.p0), iT = ln.ext ? iEnd : ln.i1, pT = at(ln, iT);
-          const x1 = ln.ext ? pw : this.x(ln.i1), y1 = y(pT);
+      /* formasyon çizgileri (Formasyon Merkezi): eski formasyonlar soluk, güncel olan kalın */
+      if (L.form && (d.formation || (d.formHistory && d.formHistory.length))) {
+        const iEnd = this.R + 0.5;
+        const stroke = (ln, dots) => {
+          const x0 = this.x(ln.i0), y0 = y(ln.p0), x1 = ln.ext ? pw : this.x(ln.i1), y1 = y(at(ln, ln.ext ? iEnd : ln.i1));
           c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
-          c.fillStyle = f.color; c.beginPath(); c.arc(x0, y0, 3, 0, 7); c.fill();
-          if (!ln.ext) { c.beginPath(); c.arc(x1, y1, 3, 0, 7); c.fill(); }
-        });
+          if (dots) { c.beginPath(); c.arc(x0, y0, 3, 0, 7); c.fill(); if (!ln.ext) { c.beginPath(); c.arc(x1, y1, 3, 0, 7); c.fill(); } }
+        };
+        const curId = d.formation && d.formation.id;
+        if (d.formHistory) {
+          c.lineWidth = 1; c.globalAlpha = 0.34;
+          for (const f of d.formHistory) { if (f.id === curId) continue; c.strokeStyle = f.color; for (const ln of f.lines) stroke(ln, false); }
+        }
+        if (d.formation) {
+          const f = d.formation;
+          c.lineWidth = 1.8; c.globalAlpha = 0.95; c.strokeStyle = f.color; c.fillStyle = f.color;
+          for (const ln of f.lines) stroke(ln, true);
+          c.globalAlpha = 1; c.font = `600 11px ${col.font}`; c.textAlign = 'left'; c.textBaseline = 'top';
+          c.fillText(f.name + ' · ' + f.status, 8, priceTop + 4);
+        }
         c.globalAlpha = 1; c.lineWidth = 1;
-        c.font = `600 11px ${col.font}`; c.textAlign = 'left'; c.textBaseline = 'top'; c.fillStyle = f.color;
-        c.fillText(f.name + ' · ' + f.status, 8, priceTop + 4);
       }
 
       /* tetik işaretleri */

@@ -209,3 +209,5 @@ button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--beam);
 .sec-head h2 { font: 600 12px/1 var(--font); letter-spacing: .09em; text-transform: uppercase; color: var(--fog); }
 .grant { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
 .grant input, .grant select { width: 100%; min-width: 0; }
+.chk { display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: start; margin: 16px 0 4px; font-size: 14px; color: var(--mist); min-height: 44px; }
+.chk input { width: 20px; height: 20px; accent-color: var(--beam); margin: 2px 0 0; }
