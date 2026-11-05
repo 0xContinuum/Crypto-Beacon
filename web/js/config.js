@@ -10,7 +10,7 @@
  * Para karşılığı satılacak bir özellik için kimliği sunucuda imzayla doğrulamak gerekir.
  */
 window.BEACON_CONFIG = {
-  adsgramBlockId: '',      // örn. '12345'
+  adsgramBlockId: '58185',      // örn. '12345'
   proMinutesPerAd: 30,
   proMaxMinutes: 120,
   adsPerDay: 6,
