@@ -4,6 +4,7 @@ Zaman damgaları epoch saniye (BIGINT), para mikro-USD (BIGINT) tutulur: kayan n
 import os
 import sqlite3
 import threading
+from decimal import Decimal
 from contextlib import contextmanager
 
 SCHEMA = [
@@ -28,6 +29,13 @@ SCHEMA = [
 ]
 
 
+def plain(v):
+    """Postgres SUM(BIGINT) Decimal döndürür; JSON'a çevrilemez. Tam sayıya (veya float'a) indirger."""
+    if isinstance(v, Decimal):
+        return int(v) if v == v.to_integral_value() else float(v)
+    return v
+
+
 class DB:
     def __init__(self, url=None):
         self.url = url or os.environ.get("DATABASE_URL") or "sqlite:///beacon.db"
@@ -41,7 +49,8 @@ class DB:
         if self.pg:
             import psycopg
             from psycopg.rows import dict_row
-            self.conn = psycopg.connect(self.url, autocommit=True, row_factory=dict_row)
+            # prepare_threshold=None: Neon'un havuzlayıcısı (pgbouncer) ile hazır ifade çakışması olmasın
+            self.conn = psycopg.connect(self.url, autocommit=True, row_factory=dict_row, prepare_threshold=None, connect_timeout=15)
         else:
             path = self.url.replace("sqlite:///", "", 1)
             self.conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
@@ -63,15 +72,23 @@ class DB:
         try:
             return self._run(sql, params)
         except Exception as e:  # Neon boşta kalan bağlantıyı kapatabilir: bir kez yeniden bağlan
-            if self.pg and self.depth == 0 and e.__class__.__name__ in ("OperationalError", "InterfaceError"):
-                self._connect()
-                return self._run(sql, params)
+            if self.pg and self.depth == 0 and e.__class__.__name__ in ("OperationalError", "InterfaceError", "AdminShutdown", "ConnectionTimeout"):
+                import time
+                last = e
+                for wait in (0, 1.5):
+                    time.sleep(wait)
+                    try:
+                        self._connect()
+                        return self._run(sql, params)
+                    except Exception as e2:
+                        last = e2
+                raise last
             raise
 
     def q(self, sql, params=()):
         with self.lock:
             cur = self._exec(sql, params)
-            return [dict(r) for r in cur.fetchall()] if cur.description else []
+            return [{k: plain(v) for k, v in dict(r).items()} for r in cur.fetchall()] if cur.description else []
 
     def one(self, sql, params=()):
         rows = self.q(sql, params)
