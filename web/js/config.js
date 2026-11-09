@@ -11,7 +11,7 @@
  * Para karşılığı satılacak bir özellik için kimliği sunucuda imzayla doğrulamak gerekir.
  */
 window.BEACON_CONFIG = {
-  apiUrl: 'https://crypto-beacon.onrender.com',              // örn. 'https://beacon-api.onrender.com'. Boşsa uygulama sunucusuz (eski) modda çalışır.
+  apiUrl: 'https://beacon-api-g8up.onrender.com',              // örn. 'https://beacon-api.onrender.com'. Boşsa uygulama sunucusuz (eski) modda çalışır.
   adsgramBlockId: '58185',      // örn. '12345'
   proMinutesPerAd: 30,
   proMaxMinutes: 120,
