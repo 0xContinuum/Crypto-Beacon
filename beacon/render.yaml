@@ -1,0 +1,13 @@
+# Render: ücretsiz Static Site (uyumaz, ping gerektirmez). Blueprint ile yükleyin.
+services:
+  - type: web
+    name: beacon-terminal
+    runtime: static
+    staticPublishPath: ./web
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /fonts/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable

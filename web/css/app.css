@@ -211,3 +211,35 @@ button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--beam);
 .grant input, .grant select { width: 100%; min-width: 0; }
 .chk { display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: start; margin: 16px 0 4px; font-size: 14px; color: var(--mist); min-height: 44px; }
 .chk input { width: 20px; height: 20px; accent-color: var(--beam); margin: 2px 0 0; }
+
+/* ——— topluluk ——— */
+body.srv .dock > div { grid-template-columns: repeat(6, 1fr); }
+body.srv .dock button { font-size: 10.5px; }
+.pad { padding: 14px var(--gut); }
+.empty { padding: 48px var(--gut); text-align: center; display: grid; gap: 6px; }
+.post { padding: 16px var(--gut); border-bottom: 1px solid var(--rule); cursor: pointer; }
+.post .ph { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+.post .r, .r { margin-left: auto; font-size: 12px; }
+.post h3 { font: 700 17px/1.25 var(--display); margin: 6px 0; }
+.post p { color: var(--mist); font-size: 14px; }
+.post img, img.big { width: 100%; border-radius: 12px; margin: 8px 0; border: 1px solid var(--rule); display: block; }
+.pf { display: flex; gap: 14px; margin-top: 10px; font-size: 12.5px; align-items: center; }
+.tag { padding: 2px 8px; border-radius: 6px; background: var(--beam-dim); color: var(--beam); font-weight: 600; font-size: 12px; }
+.sm { font-size: 12.5px; }
+.bc { display: flex; justify-content: space-between; gap: 12px; padding: 16px var(--gut); border-bottom: 1px solid var(--rule); }
+.bcb { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.bcb a.chip { display: inline-flex; align-items: center; text-decoration: none; }
+.row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--grid); align-items: center; }
+.row:last-child { border: 0; }
+.mod { padding: 12px 0; border-bottom: 1px solid var(--grid); display: grid; gap: 6px; }
+.body { white-space: pre-wrap; font-size: 14px; color: var(--mist); margin: 10px 0; word-break: break-word; }
+.acts { display: flex; gap: 8px; margin: 12px 0; }
+.disc { margin: 8px 0 12px; }
+.adbox { border: 1px solid var(--rule); border-radius: 14px; padding: 14px; }
+.form { display: grid; gap: 8px; }
+.form input, .form textarea, .form select, .grant input, .grant select { min-height: 44px; border-radius: 10px; border: 1px solid var(--rule); background: var(--deep); color: var(--foam); padding: 10px 12px; font: inherit; width: 100%; min-width: 0; }
+.form textarea { resize: vertical; }
+.addr { font-size: 12px; word-break: break-all; color: var(--mist); }
+.idrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.rules { padding-left: 18px; display: grid; gap: 6px; }
+.panel img.big { max-height: 40dvh; object-fit: contain; }

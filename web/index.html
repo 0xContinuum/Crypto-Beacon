@@ -145,9 +145,9 @@
       <section class="sec" id="idSec">
         <h2>Telegram kimliğiniz</h2>
         <div class="idrow"><code id="myId" class="num">Telegram dışında açık</code><button class="chip" id="copyId">Kopyala</button></div>
-        <p class="note" style="margin-top:8px"> Pro plana geçmek isterseniz bu ID @suvarialgo ile iletişime geçebilirsiniz .</p>
+        <p class="note" style="margin-top:8px">Birine Pro vermek isterseniz o kişi uygulamayı Telegram'dan açıp bu sayıyı size iletsin.</p>
       </section>
-      <section class="sec" id="ownerSec" hidden>
+      <section class="sec" id="ownerSec" hidden><span id="legacyOwner" hidden></span>
         <h2>Pro ver (yalnızca sahip)</h2>
         <div class="grant">
           <input id="gId" inputmode="numeric" placeholder="Telegram kimliği" aria-label="Telegram kimliği">
@@ -165,7 +165,7 @@
           <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5l4 4 8-9"/></svg><span>Tüm coinler için grafik ve geriye dönük test</span></li>
           <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5l4 4 8-9"/></svg><span>Bot uyarıları ve sunucuda kaydedilen doğrulanabilir sinyal geçmişi (yolda)</span></li>
         </ul>
-        <p class="note" style="margin-top:14px">Reklam izlemek tamamen isteğe bağlıdır. Ücretsiz katman her zaman kullanılabilir. Pro süresi günde en fazla <span id="dayCap">6</span> reklamla uzatılabilir, toplam süre 2 saati aşmaz.</p>
+        <p class="note" style="margin-top:14px">Reklam izlemek tamamen isteğe bağlıdır. Ücretsiz katman her zaman kullanılabilir. Pro süresi günde en fazla <span id="dayCap">6</span> reklamla uzatılabilir, toplam süre <span id="capH">2</span> saati aşmaz.</p>
       </section>
       <section class="sec">
         <h2>Beacon nasıl çalışır</h2>
@@ -173,6 +173,18 @@
         <p class="note" style="margin-top:10px"><button class="linkb" id="legalBtn">Yasal uyarıyı oku</button></p>
       </section>
     </section>
+    <!-- TOPLULUK -->
+    <section id="v-feed" class="view" aria-label="Topluluk">
+      <div class="seg" role="group" aria-label="Akış" id="feedSeg">
+        <button data-f="all" aria-pressed="true">Akış</button>
+        <button data-f="following" aria-pressed="false">Takip</button>
+        <button data-f="bcast" aria-pressed="false">Yayıncılar</button>
+      </div>
+      <div id="feedBox"></div>
+    </section>
+
+    <!-- HESAP -->
+    <section id="v-acct" class="view" aria-label="Hesap"><div id="acctBox"></div></section>
   </main>
 
   <nav class="dock" aria-label="Ana gezinme"><div id="dock">
@@ -209,10 +221,12 @@
 
 <script src="https://sad.adsgram.ai/js/sad.min.js" async></script>
 <script src="js/config.js"></script>
+<script src="js/api.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/data.js"></script>
 <script src="js/formation.js"></script>
 <script src="js/chart.js"></script>
 <script src="js/app.js"></script>
+<script src="js/community.js"></script>
 </body>
 </html>

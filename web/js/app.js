@@ -43,11 +43,14 @@
 
   /* kimlik: Telegram'ın verdiği bilgi, doğrulanmaz (bkz. config.js güvenlik notu) */
   const uid = (() => { try { const u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user; return u ? Number(u.id) || 0 : 0; } catch (e) { return 0; } })();
-  const isOwner = () => !!uid && (CFG.ownerIds || []).map(Number).includes(uid);
+  const API = window.BeaconApi || { on: false };
+  const srv = () => !!API.on;
+  const isOwner = () => (srv() ? !!(API.me && API.me.is_admin) : !!uid && (CFG.ownerIds || []).map(Number).includes(uid));
   const myGrant = () => (uid ? (CFG.grants || []).find((g) => Number(g.id) === uid && (!g.until || Date.parse(g.until + 'T23:59:59Z') > Date.now())) || null : null);
-  const isPro = () => isOwner() || !!myGrant() || S.proUntil > Date.now();
+  const srvPro = () => { const p = API.me && API.me.pro; return !!p && p.active && (!p.until || p.until * 1000 > Date.now()); };
+  const isPro = () => (srv() ? srvPro() : isOwner() || !!myGrant() || S.proUntil > Date.now());
   const today = () => new Date().toISOString().slice(0, 10);
-  const adsUsed = () => (S.ads.d === today() ? S.ads.n : 0);
+  const adsUsed = () => (srv() ? (API.me ? API.me.ads.pro_used : 0) : S.ads.d === today() ? S.ads.n : 0);
   const coinOf = (s) => D.COINS.find((c) => c.s === s) || D.COINS[0];
   const allowed = (s) => coinOf(s).free || isPro();
 
@@ -368,6 +371,7 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function watchAd() {
     if (adBusy) return;
+    if (srv()) return watchAdServer();
     if (adsUsed() >= CFG.adsPerDay) { toast('Bugünkü reklam hakkınız doldu'); return; }
     if (S.proUntil - Date.now() >= (CFG.proMaxMinutes - 1) * MIN) { toast('Pro süresi üst sınırda'); return; }
     adBusy = true; renderPro(); haptic();
@@ -389,7 +393,53 @@
     }
     renderPro();
   }
+  /* sunucu modu: reklam oturumu sunucuda açılır, Adsgram Reward URL bildirimi doğrulanınca Pro verilir */
+  async function adForSession(placement, postId) {
+    const r = await API.call('POST', '/api/ads/start', { placement, post_id: postId || 0 });
+    let shown = false;
+    if (DEMO) { await sleep(1500); await API.call('POST', '/api/dev/reward', {}); shown = true; }
+    else {
+      const c = adController();
+      if (!c) throw new Error(CFG.adsgramBlockId || (API.me && API.me.config.adsgram_block_id) ? 'Reklam servisi yüklenemedi' : 'Reklam birimi tanımlı değil');
+      const x = await c.show(); shown = !!(x && x.done);
+    }
+    if (!shown) throw new Error('Reklam tamamlanmadı');
+    for (let i = 0; i < 8; i++) {
+      const st = await API.call('GET', '/api/ads/status?session=' + encodeURIComponent(r.session));
+      if (st.status === 'verified') return true;
+      await sleep(1200);
+    }
+    throw new Error('Reklam doğrulanamadı, biraz sonra tekrar deneyin');
+  }
+  async function watchAdServer() {
+    adBusy = true; renderPro(); haptic();
+    try { await adForSession('pro_owner'); await API.refreshMe(); haptic('ok'); toast('Pro süresi uzatıldı'); if (view === 'scan') buildScan(); }
+    catch (e) { toast(e.message || 'Reklam gösterilemedi'); }
+    adBusy = false; renderPro();
+  }
+  function renderProServer() {
+    const me = API.me; if (!me) return;
+    $('myId').textContent = String(me.id);
+    $('ownerSec').hidden = true; $('legacyOwner').hidden = true;
+    const p = me.pro, a = me.ads, st = $('proState'), fixed = p.active && p.source !== 'ads';
+    $('adBtn').hidden = fixed; $('starsBtn').hidden = fixed;
+    const hrs = Math.round(a.pro_seconds_per_ad / 3600 * 10) / 10, cap = Math.round(a.pro_max_seconds / 3600);
+    $('dayCap').textContent = a.pro_limit; $('capH').textContent = cap;
+    if (fixed) {
+      st.textContent = p.source === 'owner' ? 'Sahip' : 'Pro'; st.className = 'st num on';
+      $('proSub').textContent = p.source === 'owner' ? 'Tüm coinler ve özellikler süresiz açık.' : p.source === 'broadcaster' ? 'Yayıncı hesabınız Pro içerir.' : 'Hesabınıza tanımlı · ' + (p.until ? 'bitiş ' + new Date(p.until * 1000).toLocaleDateString('tr-TR') : 'süresiz');
+      return;
+    }
+    const left = p.until * 1000 - Date.now(), on = p.active && left > 0;
+    if (on) { const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / MIN), s = Math.floor((left % MIN) / 1000); st.textContent = `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`; st.className = 'st num on'; }
+    else { st.textContent = 'Kapalı'; st.className = 'st num'; }
+    const done = a.pro_used >= a.pro_limit, full = on && left >= (a.pro_max_seconds - 60) * 1000;
+    $('proSub').textContent = on ? `Pro aktif · bugün ${a.pro_used}/${a.pro_limit} reklam` : `Kısa bir reklam izleyin, ${hrs} saat boyunca tüm coinleri açın. Bugün ${a.pro_used}/${a.pro_limit}.`;
+    $('adBtn').disabled = adBusy || done || full;
+    $('adBtnTxt').textContent = adBusy ? 'Reklam yükleniyor…' : done ? 'Bugünkü hak doldu' : full ? 'Süre üst sınırda' : `Reklam izle · +${hrs} saat Pro`;
+  }
   function renderPro() {
+    if (srv()) return renderProServer();
     $('myId').textContent = uid ? String(uid) : 'Telegram dışında açık';
     $('ownerSec').hidden = !isOwner();
     const owner = isOwner(), grant = myGrant(), fixed = owner || !!grant;
@@ -434,6 +484,7 @@
     if (v === 'scan') buildScan();
     if (v === 'perf') buildPerf();
     if (v === 'pro') renderPro();
+    if (window.BeaconCommunity) window.BeaconCommunity.onView(v);
   }
   $('dock').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { haptic(); go(b.dataset.v); } });
   try { tg && tg.BackButton && tg.BackButton.onClick(() => go('radar')); } catch (e) {}
@@ -533,7 +584,8 @@
   applyState();
   if (!S.legal) openSheet('legal');
   loadRadar();
+  if (srv()) API.refreshMe().then(() => { applyState(); if (window.BeaconCommunity) window.BeaconCommunity.init(); }).catch((e) => toast(e.message || 'Sunucuya bağlanılamadı'));
 
   /* test için dışa açılan küçük yüzey */
-  window.__beacon = { go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
+  window.__beacon = { toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
 })();

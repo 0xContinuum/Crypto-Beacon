@@ -43,6 +43,30 @@ Sonuçlar TradingView'dakiyle birebir aynı olmayabilir. Ayarlar (hassasiyet, to
 `web/js/config.js` içinde `ownerIds` (sahip kimlikleri, süresiz tam erişim) ve `grants` (başkalarına Pro) vardır. Pro sekmesi kullanıcının Telegram kimliğini gösterir; sahip, aynı sekmede kimlik ve süre girip `grants` için hazır satır üretebilir. Satırı `config.js`'e ekleyip GitHub'a gönderin.
 **Güvenlik:** uygulamada sunucu yok, kimlik istemciden okunur ve doğrulanmaz; teknik biliği olan biri taklit edebilir. Kilitlenen şey değerli bir ürün değil, kolaylıktır. Para karşılığı satılacak bir özellik için kimliği sunucuda `initData` imzasıyla doğrulamak gerekir.
 
+## Topluluk platformu (sunucu)
+
+Yayıncılar (grup kurucuları) yalnızca sahibin eklediği kişilerdir. Paylaşımlar önce sahip onayından geçer. Yayıncı sayfasından izlenen
+reklamların geliri yayıncıya (%50, kişi başı değiştirilebilir), Pro sayfasından izlenenler sahibe yazılır.
+
+**Kurulum (sırayla)**
+1. Neon'da ücretsiz Postgres açın, bağlantı adresini kopyalayın (`DATABASE_URL`).
+2. Render'da `beacon-api` servisini oluşturun (render.yaml). Ortam değişkenleri: `BOT_TOKEN`, `DATABASE_URL`, `ADSGRAM_SECRET` (uzun rastgele), `WEBHOOK_SECRET`, `APP_URL`, `PUBLIC_URL` (API adresi), `ADMIN_IDS`.
+3. `web/js/config.js` içinde `apiUrl` alanına API adresini yazın, GitHub'a gönderin.
+4. Adsgram panelinde Reward URL: `https://<api>.onrender.com/api/adsgram/reward?userid=[userId]&secret=<ADSGRAM_SECRET>`
+5. BotFather: botun Mini App adresini statik sitenin adresi yapın. Bot `/start`'a yanıt verir (webhook sunucu açılışında kaydedilir).
+6. UptimeRobot ile `https://<api>.onrender.com/healthz` adresini 5 dakikada bir çağırın (ücretsiz plan uyku modunu önler).
+7. Uygulamada Hesap > Yönetim bölümünden yayıncı ekleyin.
+
+**Günlük işleyiş**: Her sabah Adsgram panelinden dünün gösterim ve CPM değerini Yönetim > Günlük gelir girişi'ne girin. Adsgram ödemesi
+hesabınıza geçince "tahsil edildi" işaretleyin; yayıncı bakiyesi ancak o zaman çekilebilir olur. Ödeme talebinde cüzdana kendiniz gönderin, txid yazıp "Ödendi" deyin.
+
+**Hesaplama**: yayıncı kazancı = günlük gelir × (yayıncının doğrulanmış reklamı / max(Adsgram gösterimi, bizim kaydımız)) × pay. Tüm tutarlar tam sayı mikro-dolardır.
+
+**Testler**: `python3 -I server/tests/test_core.py`, `python3 -I server/tests/test_api.py`, `node tests/e2e.test.js`.
+Yerelde denemek için `DEV_MODE=1` ile sunucuyu açıp uygulamayı `?demo=1&dev=<kimlik>` ile açın (yalnızca geliştirme; canlıda asla açmayın).
+
+**Yasal ve riskler (avukat değilim)**: Ödeme yaptığınız kişilerin içeriği nedeniyle SPK mevzuatı (izinsiz yatırım danışmanlığı, menfaat sağlama) ve vergi konuları gündeme gelebilir. İlk ödemeden önce bir avukat ve mali müşavirden görüş alın. Adsgram kendi içerik kurallarını uygular; reklam hesabınız için ayrı bir başvuru önerilir. İçerik filtresi ilk savunma hattıdır, asıl güvence admin onayıdır.
+
 ## Dürüst notlar
 - **Motorun avantajı kanıtlanmadı.** Testler hesapların doğru olduğunu gösterir, stratejinin kazandırdığını değil. Gerçek veride, farklı dönemlerde (walk-forward) doğrulayın. Sentetik veri sonuçları anlamsızdır.
 - Pro kilidi istemci tarafıdır; teknik kullanıcı aşabilir. Kilitlenen şey değerli bir ürün değil, kolaylıktır. Ücretli Pro (Stars) için sunucu doğrulaması gerekir (Faz 2).

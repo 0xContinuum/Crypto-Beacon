@@ -11,3 +11,29 @@ services:
       - path: /fonts/*
         name: Cache-Control
         value: public, max-age=31536000, immutable
+
+  # Topluluk sunucusu (Faz 1). Ücretsiz plan 15 dk işlemsiz kalınca uyur: UptimeRobot ile /healthz'i 5 dk'da bir çağırın.
+  - type: web
+    name: beacon-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r server/requirements.txt
+    startCommand: uvicorn server.app:default_app --factory --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.3"
+      - key: BOT_TOKEN        # BotFather'dan
+        sync: false
+      - key: DATABASE_URL     # Neon Postgres bağlantı adresi
+        sync: false
+      - key: ADMIN_IDS
+        value: "6394985954"
+      - key: ADSGRAM_SECRET   # kendi seçtiğiniz uzun rastgele metin
+        sync: false
+      - key: WEBHOOK_SECRET   # kendi seçtiğiniz rastgele metin
+        sync: false
+      - key: APP_URL          # statik sitenin adresi
+        value: https://crypto-beacon.onrender.com
+      - key: PUBLIC_URL       # bu API'nin adresi
+        sync: false
