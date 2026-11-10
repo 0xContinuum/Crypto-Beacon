@@ -17,7 +17,7 @@ window.BEACON_CONFIG = {
   //   AdSense: { provider: 'adsense', client: 'ca-pub-XXXXXXXXXXXXXXXX', slots: { a: '1234567890', b: '0987654321' } }
   //   Başka ağ: { provider: 'html', slots: { a: '<ağın verdiği kod>', b: '<...>' } }
   webAds: null,
-  adsgramBlockId: '',      // örn. '12345'
+  adsgramBlockId: '58185',      // örn. '12345'
   proMinutesPerAd: 60,
   proMaxMinutes: 360,
   adsPerDay: 6,
