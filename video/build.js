@@ -14,7 +14,7 @@ const call = async (m, p, uid, body) => (await fetch(API + p, { method: m, heade
 const mk = (withApi) => http.createServer((q, r) => {
   let f = path.join(WEB, decodeURIComponent(q.url.split('?')[0])); if (f.endsWith(path.sep)) f += 'index.html';
   if (!f.startsWith(WEB) || !fs.existsSync(f)) { r.writeHead(404); return r.end(); }
-  let b = fs.readFileSync(f); if (withApi && f.endsWith(path.join('js', 'config.js'))) b = Buffer.from(b.toString().replace("apiUrl: ''", `apiUrl: '${API}'`));
+  let b = fs.readFileSync(f); if (f.endsWith(path.join('js', 'config.js'))) b = Buffer.from(b.toString().replace(/apiUrl: '[^']*'/, `apiUrl: '${withApi ? API : ''}'`));
   r.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'x' }); r.end(b);
 }).listen(0);
 const web = mk(false), webApi = mk(true);

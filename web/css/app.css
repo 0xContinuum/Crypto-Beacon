@@ -167,7 +167,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--beam);
 .dock button[aria-current="page"] { color: var(--beam); }
 
 /* ——— sayfa altı sac ve modal ——— */
-.scrim { position: fixed; inset: 0; z-index: 40; background: rgba(2, 5, 10, .66); display: none; align-items: flex-end; justify-content: center; }
+.scrim { position: fixed; inset: 0; z-index: 55; background: rgba(2, 5, 10, .66); display: none; align-items: flex-end; justify-content: center; }
 .scrim.on { display: flex; animation: fade .2s both; }
 @keyframes fade { from { opacity: 0; } }
 .panel { width: 100%; max-width: 560px; max-height: 86dvh; overflow: auto; background: var(--deep); border-radius: 20px 20px 0 0; border-top: 1px solid var(--rule); padding: 8px var(--gut) calc(18px + var(--bottom)); animation: slide .3s var(--ease) both; }
@@ -180,7 +180,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--beam);
 .crow .r { margin-left: auto; color: var(--fog); font-size: 12px; display: flex; align-items: center; gap: 6px; }
 .crow svg { width: 15px; height: 15px; }
 
-.toast { position: fixed; left: 50%; bottom: calc(76px + var(--bottom)); transform: translate(-50%, 12px); z-index: 60; background: var(--foam); color: var(--abyss); padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 14px; opacity: 0; pointer-events: none; transition: .25s var(--ease); max-width: calc(100% - 32px); text-align: center; }
+.toast { position: fixed; left: 50%; bottom: calc(76px + var(--bottom)); transform: translate(-50%, 12px); z-index: 80; background: var(--foam); color: var(--abyss); padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 14px; opacity: 0; pointer-events: none; transition: .25s var(--ease); max-width: calc(100% - 32px); text-align: center; }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 
 @media (prefers-reduced-motion: reduce) {
@@ -337,3 +337,32 @@ body.srv .dock button[data-v="perf"] { display: none; }
 .consent { position: fixed; left: 16px; right: 16px; bottom: calc(76px + var(--bottom)); z-index: 70; max-width: 520px; margin: 0 auto; background: var(--deep); border: 1px solid var(--rule); border-radius: 14px; padding: 16px; display: none; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
 .consent.on { display: block; } .consent p { font-size: 14px; color: var(--mist); } .consent .row { display: flex; gap: 10px; margin-top: 12px; } .consent .cta { margin: 0; min-height: 44px; font-size: 15px; }
 @media (min-width: 1100px) { .consent { left: 112px; right: auto; bottom: 24px; margin: 0; } }
+
+/* ——— tam ekran grafik ——— */
+#v-radar.fs { position: fixed; inset: 0; z-index: 50; display: flex !important; flex-direction: column; background: var(--abyss); padding: max(var(--top), 8px) 0 var(--bottom); animation: none; }
+#v-radar.fs > .side { display: none; }
+#v-radar.fs > .seg { margin: 6px 0; padding: 0 var(--gut); flex: none; }
+#v-radar.fs > .chartwrap { flex: 1; height: auto; min-height: 0; border-radius: 0; border-inline: 0; }
+#v-radar.fs > .layers { flex: none; padding: 8px var(--gut); }
+body.fsmode { overflow: hidden; }
+#fsBtn[aria-pressed="true"] { color: var(--beam); }
+@media (min-width: 1100px) { #v-radar.fs > .seg { padding: 0 28px; } #v-radar.fs > .layers { padding: 10px 28px; } #v-radar.fs > .chartwrap { margin: 0 28px; border: 1px solid var(--rule); border-radius: 14px; } }
+.acts { flex-wrap: wrap; }
+
+/* ——— piyasa göstergesi tam ekran ——— */
+.mk:not(.locked) { cursor: zoom-in; }
+.mkfull { position: fixed; inset: 0; z-index: 50; background: var(--abyss); display: none; flex-direction: column; padding: max(var(--top), 10px) var(--gut) calc(12px + var(--bottom)); }
+.mkfull.on { display: flex; }
+.mkfull header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.mkfull h2 { font: 700 20px/1.2 var(--display); }
+.mfv { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; } .mfv b { font: 700 28px/1 var(--display); }
+.mfbtns { display: flex; gap: 8px; }
+.mkfull .seg { padding: 0; }
+.mfc { flex: 1; min-height: 0; position: relative; margin: 6px 0; } .mfc canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.mkfull .note { max-height: 22dvh; overflow: auto; }
+@media (min-width: 1100px) { .mkfull { padding-left: 120px; padding-right: 40px; } }
+
+/* ——— video ——— */
+.vid { margin: 10px 0; } .vplay { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; border: 1px solid var(--rule); background: #000 center / cover; display: grid; place-items: center; }
+.vplay span { width: 64px; height: 64px; border-radius: 50%; background: rgba(6, 10, 18, .78); border: 2px solid var(--beam); color: var(--beam); display: grid; place-items: center; font-size: 26px; padding-left: 4px; }
+.vplay[disabled] { opacity: .6; } .vframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 12px; display: block; }

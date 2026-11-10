@@ -234,13 +234,13 @@ def create_app(S=None, db=None):
     # ——— akış ———
     def post_item(r, liked, full=False):
         body = r["body"]
-        o = {"id": r["id"], "title": r["title"], "symbol": r["symbol"], "tf": r["tf"], "published_at": r["published_at"], "views": r["views"],
+        o = {"id": r["id"], "title": r["title"], "symbol": r["symbol"], "video": r.get("video") or "", "tf": r["tf"], "published_at": r["published_at"], "views": r["views"],
              "likes": r["likes"], "liked": r["id"] in liked, "has_image": bool(r["has_img"]),
              "author": {"id": r["author_id"], "name": r["display_name"], "group_title": r["group_title"]}}
         o["body" if full else "excerpt"] = body if full else (body[:360] + ("…" if len(body) > 360 else ""))
         return o
 
-    POST_SELECT = ("SELECT p.id, p.title, p.body, p.symbol, p.tf, p.published_at, p.views, p.author_id, b.display_name, b.group_title, "
+    POST_SELECT = ("SELECT p.id, p.title, p.body, p.symbol, p.tf, p.video, p.published_at, p.views, p.author_id, b.display_name, b.group_title, "
                    "CASE WHEN p.image <> '' THEN 1 ELSE 0 END AS has_img, (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS likes "
                    "FROM posts p JOIN broadcasters b ON b.user_id = p.author_id ")
 
@@ -442,6 +442,11 @@ def create_app(S=None, db=None):
         bad = C.content_check(title, body)
         if bad:
             raise ApiError(422, "Yasak ifade var: " + ", ".join(f"“{x}”" for x in bad) + ". Al/sat çağrısı, hedef fiyat, garanti kazanç ve VIP/sinyal grubu tanıtımı yasaktır.", phrases=bad)
+        video = ""
+        if ctx.body.get("video"):
+            video = C.youtube_id(ctx.body["video"])
+            if not video:
+                raise ApiError(422, "Video bağlantısı geçerli bir YouTube adresi olmalı")
         image = ""
         if ctx.body.get("image"):
             try:
@@ -453,8 +458,8 @@ def create_app(S=None, db=None):
         if n >= S.posts_per_day: raise ApiError(429, f"Günde en fazla {S.posts_per_day} paylaşım yapabilirsiniz")
         t = now()
         status = "published" if b["auto_approve"] else "pending"
-        row = db.q("INSERT INTO posts (author_id, title, body, symbol, tf, image, status, created_at, published_at) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id",
-                   (uid, title, body, sym, tf, image, status, t, t if status == "published" else 0))[0]
+        row = db.q("INSERT INTO posts (author_id, title, body, symbol, tf, image, video, status, created_at, published_at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id",
+                   (uid, title, body, sym, tf, image, video, status, t, t if status == "published" else 0))[0]
         if status == "pending":
             notify_admins(f"🆕 Onay bekleyen paylaşım: {title[:70]} ({b['display_name']})")
         return {"id": row["id"], "status": status}

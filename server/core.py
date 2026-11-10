@@ -197,6 +197,18 @@ def valid_image(data_url, max_bytes=250_000):
     return m.group(1), raw
 
 
+YT_RE = re.compile(r"^(?:https?://)?(?:www\.|m\.)?(?:youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|embed/|live/)|youtu\.be/)([A-Za-z0-9_-]{11})(?:[?&#/].*)?$")
+
+
+def youtube_id(s):
+    """YouTube bağlantısından (veya doğrudan 11 karakterlik kimlikten) video kimliği; yoksa ''."""
+    s = (s or "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", s):
+        return s
+    m = YT_RE.match(s)
+    return m.group(1) if m else ""
+
+
 GROUP_LINK_RE = re.compile(r"^https://t\.me/[A-Za-z0-9_+\-/]{3,64}$")
 
 

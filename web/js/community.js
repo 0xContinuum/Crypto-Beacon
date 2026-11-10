@@ -35,7 +35,7 @@
     <h3>${esc(p.title)}</h3>
     ${p.has_image ? `<img loading="lazy" alt="" src="${API.imageUrl(p.id)}">` : ''}
     <p>${esc(p.excerpt)}</p>
-    <div class="pf">${p.symbol ? `<span class="tag">${esc(p.symbol)}${p.tf ? ' · ' + esc(p.tf) : ''}</span>` : ''}<span class="dim">♥ ${p.likes}</span><span class="dim">👁 ${p.views}</span></div></article>`;
+    <div class="pf">${p.symbol ? `<span class="tag">${esc(p.symbol)}${p.tf ? ' · ' + esc(p.tf) : ''}</span>` : ''}${p.video ? '<span class="tag">▶ Video</span>' : ''}<span class="dim">♥ ${p.likes}</span><span class="dim">👁 ${p.views}</span></div></article>`;
 
   const needLogin = (box) => { box.innerHTML = `<div class="empty"><b>Topluluk için giriş yapın</b><p class="note">Sağ üstteki "Telegram ile giriş" düğmesini kullanın. Hesabınız Telegram uygulamasındakiyle aynıdır.</p></div>`; };
   async function loadFeed(more) {
@@ -81,6 +81,7 @@
     const me = API.me, mine = p.author.id === me.id;
     const s = sheet(`<h3>${esc(p.title)}</h3><div class="dim sm">${esc(p.author.name)} · ${esc(p.author.group_title)} · ${when(p.published_at)}</div>
       ${p.has_image ? `<img class="big" alt="" src="${API.imageUrl(id)}">` : ''}
+      ${p.video ? `<div class="vid"><button class="vplay" id="pPlay" style="background-image:url(https://i.ytimg.com/vi/${esc(p.video)}/hqdefault.jpg)" aria-label="Videoyu oynat"><span>▶</span></button><p class="note">Oynatmadan önce kısa bir reklam gösterilebilir; geliri yayıncıyla paylaşılır.</p></div>` : ''}
       <div class="body">${esc(p.body)}</div>
       <div class="acts"><button class="chip" id="pLike" aria-pressed="${p.liked}">♥ ${p.likes}</button><button class="chip" id="pFollow" aria-pressed="${p.following}">${p.following ? 'Takipte' : 'Takip et'}</button><button class="chip" id="pRep">Şikayet</button></div>
       <p class="note disc">Bu paylaşım yayıncının görüşüdür. Yatırım tavsiyesi değildir; Beacon içeriği doğrulamaz.</p>
@@ -94,6 +95,11 @@
     on('pRep', async () => { if (!confirm('Bu paylaşımı şikayet etmek istiyor musunuz?')) return; const r = await guard(() => API.call('POST', '/api/report', { post_id: id, reason: 'kullanıcı şikayeti' })); if (r) toast('Şikayetiniz alındı'); });
     const ad = (placement) => async (ev) => { const b = ev.currentTarget; b.disabled = true; const r = await guard(() => BX().adForSession(placement, id)); b.disabled = false; if (r) { toast(placement === 'support' ? 'Teşekkürler, yayıncı desteklendi' : 'Pro süresi uzatıldı'); await API.refreshMe(); BX().renderPro(); } };
     on('pSup', ad('support')); on('pPro', ad('pro_bcast'));
+    on('pPlay', async (ev) => {
+      const btn = ev.currentTarget; btn.disabled = true;
+      if (!API.web) { try { await BX().adForSession('support', id); await API.refreshMe(); } catch (e) { /* reklam yoksa video yine açılır */ } }
+      const box = btn.parentElement; box.innerHTML = `<iframe class="vframe" src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(p.video)}?autoplay=1&rel=0" title="Video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+    });
   }
 
   /* ——— hesap ——— */
@@ -124,7 +130,7 @@
       <section class="sec"><h2>İstatistik</h2><div class="kpis"><div class="kpi"><span>Takipçi</span><b class="num">${st.followers}</b></div><div class="kpi"><span>Görüntülenme</span><b class="num">${st.views}</b></div><div class="kpi"><span>Yayında</span><b class="num">${st.posts.published || 0}</b></div></div></section>
       <section class="sec"><h2>Yeni paylaşım</h2><div class="form"><input id="cT" maxlength="120" placeholder="Başlık"><textarea id="cB" rows="6" maxlength="4000" placeholder="Analiz metni (en az 40 karakter). Al/sat çağrısı ve hedef fiyat yazmayın."></textarea>
         <div class="grant"><input id="cS" maxlength="10" placeholder="Sembol (BTC)"><select id="cF"><option value="">Zaman dilimi</option><option>15m</option><option>1h</option><option>4h</option><option>1d</option><option>1w</option></select></div>
-        <button class="chip" id="cImg">Radar grafiğini ekle</button><img id="cPrev" class="big" alt="" hidden></div>
+        <input id="cV" maxlength="120" placeholder="YouTube video bağlantısı (isteğe bağlı)"><div class="acts"><button class="chip" id="cImg">Radar grafiğini ekle</button><button class="chip" id="cFile">Görsel yükle</button><input type="file" id="cFileIn" accept="image/*" hidden></div><img id="cPrev" class="big" alt="" hidden></div>
         <button class="cta" id="cSend">${P.auto_approve ? 'Yayınla' : 'Onaya gönder'}</button></section>
       <section class="sec"><h2>Paylaşımlarım</h2>${(posts && posts.items.length) ? posts.items.map((p) => `<div class="row"><div><b>${esc(p.title)}</b><div class="dim sm">${STATUS[p.status] || p.status} · 👁 ${p.views} · ${when(p.created_at)}</div>${p.reason ? `<div class="down sm">${esc(p.reason)}</div>` : ''}</div><button class="chip" data-del="${p.id}">Sil</button></div>`).join('') : '<p class="note">Henüz paylaşımınız yok.</p>'}</section>
       <section class="sec"><h2>Cüzdan ve ödemeler</h2><div class="grant"><select id="wN"><option value="">Ağ seçin</option>${Object.entries(NET).map(([k, v]) => `<option value="${k}" ${P.network === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button class="chip" id="wSave">Kaydet</button><input id="wA" placeholder="Cüzdan adresi" value="${esc(P.wallet)}"></div>
@@ -139,8 +145,19 @@
       const g = c.getContext('2d'); g.fillStyle = '#060a12'; g.fillRect(0, 0, c.width, c.height); g.drawImage(src, 0, 0, c.width, c.height);
       img = c.toDataURL('image/jpeg', 0.72); const pv = $('cPrev'); pv.src = img; pv.hidden = false; toast('Grafik eklendi');
     };
+    b.querySelector('#cFile').onclick = () => $('cFileIn').click();
+    b.querySelector('#cFileIn').onchange = async (e) => {
+      const f = e.target.files && e.target.files[0]; if (!f) return;
+      try {
+        const bmp = await createImageBitmap(f), k = Math.min(1, 1100 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+        const g = c.getContext('2d'); g.fillStyle = '#060a12'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+        let q = 0.85, d = c.toDataURL('image/jpeg', q); while (d.length * 0.75 > 235000 && q > 0.35) { q -= 0.1; d = c.toDataURL('image/jpeg', q); }
+        if (d.length * 0.75 > 235000) return toast('Görsel çok büyük, daha küçük bir görsel seçin');
+        img = d; const pv = $('cPrev'); pv.src = img; pv.hidden = false; toast('Görsel eklendi');
+      } catch (err) { toast('Görsel okunamadı'); }
+    };
     b.querySelector('#cSend').onclick = async () => {
-      const x = await guard(() => API.call('POST', '/api/b/posts', { title: $('cT').value, body: $('cB').value, symbol: $('cS').value.trim(), tf: $('cF').value, image: img }));
+      const x = await guard(() => API.call('POST', '/api/b/posts', { title: $('cT').value, body: $('cB').value, symbol: $('cS').value.trim(), tf: $('cF').value, image: img, video: $('cV').value.trim() }));
       if (x) { toast(x.status === 'pending' ? 'Onaya gönderildi' : 'Yayınlandı'); loadB(); }
     };
     b.addEventListener('click', async (e) => {

@@ -44,6 +44,7 @@ function series(sym, tf, n) {
     page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
     page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|net::ERR/.test(m.text())) errors.push('console: ' + m.text()); });
     await page.route(/telegram\.org|adsgram\.ai/, (r) => r.abort());
+    await page.route(/config\.local\.js/, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: "Object.assign(window.BEACON_CONFIG, { apiUrl: '' });" })); // testler sunucusuz modda çalışır
     if (opts.fail) await page.route(/api\/v3\/klines/, (r) => r.abort());
     else await page.route(/api\/v3\/klines/, (r) => {
       const u = new URL(r.request().url()), sym = u.searchParams.get('symbol').replace('USDT', ''), tf = u.searchParams.get('interval'), lim = +u.searchParams.get('limit');

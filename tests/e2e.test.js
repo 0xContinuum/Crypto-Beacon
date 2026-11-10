@@ -18,7 +18,7 @@ const call = async (m, p, uid, body) => { const r = await fetch(API + p, { metho
     let f = path.join(WEB, decodeURIComponent(q.url.split('?')[0])); if (f.endsWith('/')) f += 'index.html';
     if (!f.startsWith(WEB) || !fs.existsSync(f)) { s.writeHead(404); return s.end(); }
     const t = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.woff': 'font/woff' }[path.extname(f)] || 'application/octet-stream';
-    let b = fs.readFileSync(f); if (f.endsWith('config.js')) b = Buffer.from(b.toString().replace("apiUrl: ''", `apiUrl: '${API}'`));
+    let b = fs.readFileSync(f); if (f.endsWith('config.js')) b = Buffer.from(b.toString().replace(/apiUrl: '[^']*'/, `apiUrl: '${API}'`));
     s.writeHead(200, { 'Content-Type': t }); s.end(b);
   }).listen(WEB_PORT);
   try {
@@ -27,7 +27,7 @@ const call = async (m, p, uid, body) => { const r = await fetch(API + p, { metho
     const errors = [];
     const open = async (uid) => {
       const ctx = await browser.newContext({ viewport: { width: 390, height: 800 }, deviceScaleFactor: 1 });
-      await ctx.route(/binance\.com|adsgram/, (r) => r.abort());
+      await ctx.route(/binance\.com|adsgram|youtube|ytimg/, (r) => r.abort());
       await ctx.addInitScript(() => { try { localStorage.setItem('bcn', JSON.stringify({ legal: true })); } catch (e) {} });
       const pg = await ctx.newPage();
       pg.on('pageerror', (e) => errors.push(String(e)));
@@ -85,6 +85,25 @@ const call = async (m, p, uid, body) => { const r = await fetch(API + p, { metho
     const txt = await a.textContent('#aPanel');
     ok(/Video:\s*2 \/ 2 \/ 2/.test(txt.replace(/\s+/g, ' ')), 'yönetim yayıncının reklam videosu sayısını gösterir (2/2/2)');
     await a.screenshot({ path: path.join(SHOTS, 'srv-admin.png'), fullPage: true });
+
+    // görsel yükleme + YouTube videosu + reklam sonrası oynatma
+    const PNG1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+    await tab(b, 'acct');
+    await b.fill('#cT', 'Video ve görselli analiz örneği'); await b.fill('#cB', 'Bu paylaşımda bir görsel ve bir video bağlantısı var. Metin yalnızca test içindir ve analiz niteliği taşımaz, eğitim amaçlıdır.');
+    await b.fill('#cV', 'https://youtu.be/dQw4w9WgXcQ?t=5');
+    await b.setInputFiles('#cFileIn', { name: 'a.png', mimeType: 'image/png', buffer: PNG1 }); await b.waitForSelector('#cPrev:not([hidden])', { timeout: 5000 });
+    ok(/^data:image\/jpeg/.test(await b.getAttribute('#cPrev', 'src')), 'yüklenen görsel küçültülüp JPEG olarak hazırlanır');
+    await b.click('#cSend'); await sleep(900);
+    ok(/Onaya gönderildi/.test(await b.textContent('#toast')), 'görselli ve videolu paylaşım onaya gider');
+    await b.fill('#cT', 'Kötü video örneği'); await b.fill('#cB', 'Metin uzun metin uzun metin uzun metin uzun metin uzun metin uzun metin.'); await b.fill('#cV', 'https://evil.example/x'); await b.click('#cSend'); await sleep(700);
+    ok(/YouTube/.test(await b.textContent('#toast')), 'YouTube dışı video bağlantısı reddedilir');
+    await tab(a, 'radar'); await tab(a, 'acct'); await a.click('#aPanel [data-ap]'); await sleep(800);
+    await tab(u, 'radar'); await tab(u, 'feed');
+    ok(await u.locator('.post .tag:has-text("Video")').count() === 1, 'akışta video etiketi görünür');
+    await u.locator('.post:has(.tag:has-text("Video"))').click(); await u.waitForSelector('#pPlay');
+    ok((await u.getAttribute('#pPlay', 'style')).includes('i.ytimg.com/vi/dQw4w9WgXcQ'), 'video önizleme görseli doğru kimliği kullanır');
+    await u.click('#pPlay'); await u.waitForSelector('.vframe', { timeout: 9000 });
+    ok((await u.getAttribute('.vframe', 'src')).startsWith('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'), 'reklamdan sonra gizlilik dostu YouTube oynatıcısı açılır');
     ok(errors.length === 0, 'konsolda hata yok ' + errors.join('|'));
     console.log(`\nTÜM E2E TESTLERİ GEÇTİ (${n})`);
   } catch (e) { console.error(e); process.exitCode = 1; }

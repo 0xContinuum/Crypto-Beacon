@@ -10,7 +10,7 @@ from contextlib import contextmanager
 SCHEMA = [
     "CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY, username TEXT DEFAULT '', first_name TEXT DEFAULT '', created_at BIGINT, last_seen BIGINT, pro_until BIGINT DEFAULT 0)",
     "CREATE TABLE IF NOT EXISTS broadcasters (user_id BIGINT PRIMARY KEY, display_name TEXT, bio TEXT DEFAULT '', group_title TEXT DEFAULT '', group_link TEXT DEFAULT '', status TEXT DEFAULT 'active', auto_approve INTEGER DEFAULT 0, share_bps INTEGER DEFAULT 5000, wallet TEXT DEFAULT '', network TEXT DEFAULT '', created_at BIGINT)",
-    "CREATE TABLE IF NOT EXISTS posts ({PK}, author_id BIGINT, title TEXT, body TEXT, symbol TEXT DEFAULT '', tf TEXT DEFAULT '', image TEXT DEFAULT '', status TEXT, reason TEXT DEFAULT '', created_at BIGINT, published_at BIGINT DEFAULT 0, views INTEGER DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS posts ({PK}, author_id BIGINT, title TEXT, body TEXT, symbol TEXT DEFAULT '', tf TEXT DEFAULT '', image TEXT DEFAULT '', video TEXT DEFAULT '', status TEXT, reason TEXT DEFAULT '', created_at BIGINT, published_at BIGINT DEFAULT 0, views INTEGER DEFAULT 0)",
     "CREATE INDEX IF NOT EXISTS posts_feed ON posts (status, published_at)",
     "CREATE INDEX IF NOT EXISTS posts_author ON posts (author_id, status)",
     "CREATE TABLE IF NOT EXISTS likes (post_id BIGINT, user_id BIGINT, PRIMARY KEY (post_id, user_id))",
@@ -129,3 +129,14 @@ class DB:
         pk = "id " + pk
         for s in SCHEMA:
             self.x(s.replace("{PK}", pk))
+        self._migrate()
+
+    def _has_col(self, table, col):
+        if self.pg:
+            return bool(self.one("SELECT 1 AS x FROM information_schema.columns WHERE table_name=? AND column_name=?", (table, col)))
+        return any(r["name"] == col for r in self.q(f"PRAGMA table_info({table})"))
+
+    def _migrate(self):
+        """Var olan veritabanlarına sonradan eklenen sütunlar."""
+        if not self._has_col("posts", "video"):
+            self.x("ALTER TABLE posts ADD COLUMN video TEXT DEFAULT ''")

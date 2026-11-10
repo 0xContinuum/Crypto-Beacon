@@ -62,10 +62,22 @@ hesabınıza geçince "tahsil edildi" işaretleyin; yayıncı bakiyesi ancak o z
 
 **Hesaplama**: yayıncı kazancı = günlük gelir × (yayıncının doğrulanmış reklamı / max(Adsgram gösterimi, bizim kaydımız)) × pay. Tüm tutarlar tam sayı mikro-dolardır.
 
-**Testler**: `python3 -I server/tests/test_core.py`, `python3 -I server/tests/test_api.py`, `node tests/e2e.test.js`, `node tests/desktop.test.js`.
+**Testler**: `python3 -I server/tests/test_core.py`, `python3 -I server/tests/test_api.py`, `node tests/e2e.test.js`, `node tests/desktop.test.js`, `node tests/tools.test.js`.
 Yerelde denemek için `DEV_MODE=1` ile sunucuyu açıp uygulamayı `?demo=1&dev=<kimlik>` ile açın (yalnızca geliştirme; canlıda asla açmayın).
 
 **Yasal ve riskler (avukat değilim)**: Ödeme yaptığınız kişilerin içeriği nedeniyle SPK mevzuatı (izinsiz yatırım danışmanlığı, menfaat sağlama) ve vergi konuları gündeme gelebilir. İlk ödemeden önce bir avukat ve mali müşavirden görüş alın. Adsgram kendi içerik kurallarını uygular; reklam hesabınız için ayrı bir başvuru önerilir. İçerik filtresi ilk savunma hattıdır, asıl güvence admin onayıdır.
+
+## Ayarlarınızı korumak: config.local.js
+`web/js/config.js` her yeni sürümde değişir. Size özel değerleri (Adsgram blok kimliği, `webAds` vb.) `web/js/config.local.js` dosyasına yazın; bu dosya varsa config.js'in üzerine yazar ve yeni sürüm yüklerken ezilmez. Örnek:
+```js
+Object.assign(window.BEACON_CONFIG, { adsgramBlockId: '12345' });
+```
+`apiUrl` varsayılan olarak API adresinize ayarlıdır. Boş olursa Topluluk ve Hesap sekmeleri görünmez (sunucusuz mod).
+
+## Grafik araçları
+- **Tam ekran:** Radar grafiğinde ⛶ düğmesi (Esc ile çıkış). Piyasa göstergesi kartına dokununca tam ekran açılır.
+- **Görsel indir/paylaş:** Radar ve piyasa grafiklerinde ⬆ düğmesi. Görsele Beacon adı, logosu, bot bağlantısı ve silik filigran eklenir; indir, paylaş (cihaz paylaşım menüsü) veya kopyala.
+- **Yayıncı paylaşımları:** Görsel yükleme (otomatik küçültülür) ve YouTube video bağlantısı. Video dosyası barındırmıyoruz (maliyet ve moderasyon yükü); video oynatılmadan önce isteğe bağlı kısa reklam gösterilir, reklam yoksa video yine açılır. Reklam geliri yayıncıya yazılır.
 
 ## Piyasa göstergeleri, özel göstergeler, GRAM
 - **Piyasa sekmesi** (`web/js/market.js`, `market-ui.js`): Bitcoin günlük verisinden kendi hesabımızla Pi Cycle Top, Mayer Çarpanı (herkese açık); 200 haftalık ortalama, 2 yıllık ortalama çarpanı, regresyon bandı (Rainbow benzeri) ve halving döngüsü (Pro). Hiçbir üçüncü taraf siteden veri kopyalanmaz.

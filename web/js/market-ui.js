@@ -8,17 +8,18 @@
   const dstr = (t) => new Date(t).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' });
   const ds = (t) => new Date(t).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
   const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  let R = null, range = 'all', loading = false, failed = false;
+  let R = null, range = 'all', loading = false, failed = false, lastCards = [], fullId = '';
   const FREE = new Set(['pi', 'mayer']);
   const css = (n, f) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || f;
 
   /* ——— küçük çizgi grafik ——— */
-  function mini(cv, cfg) {
+  function mini(cv, cfg, big) {
+    const FS = big ? 1.35 : 1;
     const dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth, H = cv.clientHeight; if (!W) return;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
     const font = css('--font', 'Inter, system-ui, sans-serif'), fog = css('--fog', '#7e8ba6'), grid = css('--grid', '#121b2e');
-    const axisW = 52, padB = 18, pw = W - axisW, ph = H - padB, log = cfg.log;
+    const axisW = 52 * FS, padB = 18 * FS, pw = W - axisW, ph = H - padB, log = cfg.log;
     let x0 = Infinity, x1 = -Infinity, lo = Infinity, hi = -Infinity;
     const inR = (x) => x >= cfg.xMin;
     for (const s of cfg.series) for (let i = 0; i < s.x.length; i++) { if (!inR(s.x[i])) continue; if (s.x[i] < x0) x0 = s.x[i]; if (s.x[i] > x1) x1 = s.x[i]; }
@@ -27,7 +28,7 @@
     if (!(hi > lo)) { lo = 0; hi = 1; }
     const T = log ? Math.log : (v) => v, a = T(lo), b = T(hi), sp = (b - a) * 0.06;
     const X = (x) => ((x - x0) / (x1 - x0 || 1)) * (pw - 4) + 2, Y = (v) => 4 + (1 - (T(Math.max(v, log ? 1e-9 : -1e18)) - (a - sp)) / (b - a + 2 * sp)) * (ph - 8);
-    c.clearRect(0, 0, W, H); c.font = `500 10px ${font}`; c.textBaseline = 'middle'; c.textAlign = 'right';
+    c.clearRect(0, 0, W, H); c.font = `500 ${10 * FS}px ${font}`; c.textBaseline = 'middle'; c.textAlign = 'right';
     // ızgara
     const ticks = []; if (log) { for (let p = Math.pow(10, Math.floor(Math.log10(lo))); p <= hi * 1.01; p *= 10) for (const m of [1, 2, 5]) if (p * m >= lo && p * m <= hi) ticks.push(p * m); } else { const st = (hi - lo) / 4; for (let k = 0; k <= 4; k++) ticks.push(lo + st * k); }
     for (const v of ticks.slice(0, 7)) { const y = Math.round(Y(v)) + 0.5; c.strokeStyle = grid; c.beginPath(); c.moveTo(0, y); c.lineTo(pw, y); c.stroke(); c.fillStyle = fog; c.fillText(cfg.fmt ? cfg.fmt(v) : fmtUsd(v), W - 4, y); }
@@ -89,9 +90,9 @@
     if (loading && !R) { box.innerHTML = '<div class="skelcard"></div><div class="skelcard"></div><div class="skelcard"></div>'; return; }
     if (failed && !R) { box.innerHTML = '<div class="empty"><b>Veri alınamadı</b><p class="note">Borsa verisine ulaşılamadı.</p><button class="cta ghost" id="mkRetry" style="max-width:220px;margin:12px auto 0">Tekrar dene</button></div>'; return; }
     if (!R) return;
-    const pro = BX().isPro(), cs = cards(R);
+    const pro = BX().isPro(), cs = cards(R); lastCards = cs;
     box.innerHTML = `<p class="note pad">Bitcoin'in günlük fiyatından hesaplanan döngü göstergeleri. Son veri: ${ds(R.asOf)}. Zincir üstü veriler (MVRV, NUPL vb.) fiyattan hesaplanamadığı için dahil değildir.</p>` +
-      cs.map((k) => { const lock = !pro && !FREE.has(k.id); return `<article class="mk ${lock ? 'locked' : ''}" data-id="${k.id}"><header><h3>${k.title}${FREE.has(k.id) ? '' : ' <span class="pill">Pro</span>'}</h3><span class="badge ${lock ? 'flat' : k.tone}">${lock ? 'Kilitli' : esc(k.badge)}</span></header>
+      cs.map((k) => { const lock = !pro && !FREE.has(k.id); return `<article class="mk ${lock ? 'locked' : ''}" data-id="${k.id}" ${lock ? '' : 'tabindex="0" role="button" aria-label="' + k.title + ' grafiğini tam ekran aç"'}><header><h3>${k.title}${FREE.has(k.id) ? '' : ' <span class="pill">Pro</span>'}</h3><span class="badge ${lock ? 'flat' : k.tone}">${lock ? 'Kilitli' : esc(k.badge)}</span></header>
         <div class="mkv"><b class="num">${lock ? '••••' : esc(k.value)}</b><span class="dim">${lock ? '' : esc(k.unit)}</span></div>
         <div class="mkc"><canvas aria-label="${k.title} grafiği"></canvas>${lock ? '<button class="cta unlock" data-unlock>Pro ile aç</button>' : ''}</div>
         <div class="lg">${k.legend.map(([n, c]) => `<span><i style="background:${c}"></i>${esc(n)}</span>`).join('')}</div>
@@ -107,7 +108,25 @@
     loading = false; render();
   }
 
+  /* ——— tam ekran gösterge ——— */
+  function drawFull() {
+    const k = lastCards.find((x) => x.id === fullId); if (!k) return;
+    $('mfTitle').textContent = k.title; $('mfVal').textContent = k.value + (k.unit ? '  ' + k.unit : ''); $('mfBadge').textContent = k.badge; $('mfBadge').className = 'badge ' + k.tone;
+    $('mfInfo').textContent = k.info; $('mfLegend').innerHTML = k.legend.map(([n, c]) => `<span><i style="background:${c}"></i>${esc(n)}</span>`).join('');
+    $('mfRange').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.r === range));
+    requestAnimationFrame(() => mini($('mfCv'), k.cfg, true));
+  }
+  function openFull(id) { fullId = id; $('mkFull').classList.add('on'); document.body.classList.add('fsmode'); drawFull(); }
+  function closeFull() { fullId = ''; $('mkFull').classList.remove('on'); document.body.classList.remove('fsmode'); }
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && fullId && !document.querySelector('.scrim.on')) closeFull(); });
+  window.addEventListener('resize', () => { if (fullId) drawFull(); });
   document.addEventListener('click', (e) => {
+    const card = e.target.closest('#mkBox .mk:not(.locked)');
+    if (card && !e.target.closest('button, a')) openFull(card.dataset.id);
+    if (e.target.closest('#mfClose')) closeFull();
+    const fr = e.target.closest('#mfRange [data-r]');
+    if (fr) { range = fr.dataset.r; $('mkRange').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.r === range)); render(); drawFull(); }
+    if (e.target.closest('#mfShare')) { const k = lastCards.find((x) => x.id === fullId); if (k) BX().shareImage($('mfCv'), 'BTC · ' + k.title, k.value + (k.unit ? ' ' + k.unit : '') + ' · ' + k.badge, 'beacon-' + k.id); }
     if (e.target.closest('#mkRetry')) load();
     if (e.target.closest('[data-unlock]')) BX().go('pro');
     const r = e.target.closest('#mkRange [data-r]');

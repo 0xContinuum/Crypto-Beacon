@@ -640,5 +640,55 @@
   if (srv() && (!API.web || API.hasToken())) API.refreshMe().then(() => { applyState(); if (window.BeaconCommunity) window.BeaconCommunity.init(); }).catch((e) => toast(e.message || 'Sunucuya bağlanılamadı'));
 
   /* test için dışa açılan küçük yüzey */
-  window.__beacon = { applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
+  /* ——— tam ekran grafik ——— */
+  function setFs(on) {
+    const v = $('v-radar'); v.classList.toggle('fs', on); document.body.classList.toggle('fsmode', on);
+    $('fsBtn').setAttribute('aria-pressed', on); window.scrollTo(0, 0); setTimeout(() => chart.resize(), 60);
+    try { if (tg && tg.BackButton && view === 'radar') { on ? tg.BackButton.show() : tg.BackButton.hide(); } } catch (e) {}
+  }
+  const isFs = () => $('v-radar').classList.contains('fs');
+  $('fsBtn').onclick = () => { haptic(); setFs(!isFs()); };
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isFs() && !document.querySelector('.scrim.on')) setFs(false); });
+  try { tg && tg.BackButton && tg.BackButton.onClick(() => { if (isFs()) setFs(false); }); } catch (e) {}
+
+  /* ——— görsel olarak indir / paylaş (Beacon adı ve logosuyla) ——— */
+  const BOT = CFG.telegramBot || 'BeaconCrypto_Bot';
+  function composeImage(src, title, sub, note) {
+    const s = Math.max(1, Math.round(src.width / Math.max(1, src.clientWidth || src.width))), U = (n) => n * s;
+    const W = src.width, bar = U(64), foot = U(62), H = src.height + bar + foot, c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d'), font = (w, px) => `${w} ${U(px)}px Inter, system-ui, sans-serif`;
+    const fit = (t, maxW) => { if (g.measureText(t).width <= maxW) return t; while (g.measureText(t + '…').width > maxW && t.length > 3) t = t.slice(0, -1); return t + '…'; };
+    g.fillStyle = '#060a12'; g.fillRect(0, 0, W, H);
+    const logo = (x, y, k) => { g.save(); g.translate(x, y); g.scale(k, k); g.fillStyle = '#0d1422'; g.strokeStyle = '#1a2438'; g.lineWidth = 1; g.beginPath(); g.roundRect(0, 0, 32, 32, 8); g.fill(); g.stroke(); g.fillStyle = '#ffc25c'; g.fill(new Path2D('M16 5l4 7h-8z')); g.fillStyle = '#e9eef8'; g.fill(new Path2D('M13 14h6l2 13H11z')); g.restore(); };
+    logo(U(14), U(12), U(40) / 32);
+    g.textBaseline = 'middle'; g.textAlign = 'right'; g.fillStyle = '#ffc25c'; g.font = font(700, 22); g.fillText('Beacon', W - U(16), U(32));
+    const maxW = W - U(64) - U(110) - U(16);
+    g.textAlign = 'left'; g.fillStyle = '#e9eef8'; g.font = font(700, 20); g.fillText(fit(title, maxW), U(64), U(25));
+    g.fillStyle = '#7e8ba6'; g.font = font(500, 14); g.fillText(fit(sub, W - U(64) - U(16)), U(64), U(48));
+    g.drawImage(src, 0, bar);
+    // silik büyük filigran (kırpılsa bile marka kalsın)
+    g.save(); g.globalAlpha = 0.06; logo(W / 2 - U(70), bar + src.height / 2 - U(105), U(140) / 32); g.fillStyle = '#e9eef8'; g.textAlign = 'center'; g.font = font(700, 34); g.fillText('Beacon', W / 2, bar + src.height / 2 + U(70)); g.restore();
+    g.fillStyle = '#0d1422'; g.fillRect(0, H - foot, W, foot); g.textAlign = 'left'; g.fillStyle = '#7e8ba6'; g.font = font(500, 13);
+    g.fillText(fit(note || 'Beacon analiz aracıdır. Yatırım tavsiyesi değildir.', W - U(32)), U(16), H - foot + U(19));
+    const link = 't.me/' + BOT; g.fillStyle = '#ffc25c'; g.font = font(600, 13); g.fillText(link, U(16), H - foot + U(44));
+    const lw = g.measureText(link).width; g.fillStyle = '#a7b2c8'; g.font = font(500, 13);
+    g.fillText('  ·  ' + new Date().toLocaleString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }), U(16) + lw, H - foot + U(44));
+    return c;
+  }
+  let shareBlob = null, shareName = 'beacon.png', shareText = '';
+  function shareImage(src, title, sub, name) {
+    const c = composeImage(src, title, sub); shareName = (name || 'beacon') + '.png'; shareText = title + ' · ' + sub + ' · Beacon t.me/' + BOT;
+    c.toBlob((b) => { shareBlob = b; $('shareImg').src = URL.createObjectURL(b); openSheet('shareSheet'); }, 'image/png');
+  }
+  $('shClose').onclick = () => closeSheet('shareSheet');
+  $('shDl').onclick = () => { if (!shareBlob) return; const a = document.createElement('a'); a.href = URL.createObjectURL(shareBlob); a.download = shareName; document.body.appendChild(a); a.click(); a.remove(); toast('Görsel indirildi'); };
+  $('shShare').onclick = async () => {
+    if (!shareBlob) return; const f = new File([shareBlob], shareName, { type: 'image/png' });
+    try { if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], text: shareText }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+    toast('Bu cihazda doğrudan paylaşım yok: önce İndir, sonra paylaşın');
+  };
+  $('shCopy').onclick = async () => { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': shareBlob })]); toast('Görsel kopyalandı'); } catch (e) { toast('Kopyalanamadı: İndir\'i kullanın'); } };
+  $('shareBtn').onclick = () => { haptic(); const cv = $('cv'); if (!cv) return; shareImage(cv, S.sym + '/USDT · ' + TFL(S.tf), 'Skor ' + $('score').textContent + ' · ' + $('verd').textContent + ' · ' + $('price').textContent, 'beacon-' + S.sym + '-' + S.tf); };
+
+  window.__beacon = { shareImage, setFs, applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
 })();

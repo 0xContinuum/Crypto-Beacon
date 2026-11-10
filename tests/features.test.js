@@ -19,6 +19,7 @@ async function mock(ctx) {
     rows.reverse(); r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(rows.map((x) => [x[0], String(x[1]), String(x[2]), String(x[3]), String(x[4]), String(x[5])])) });
   });
   await ctx.route(/adsgram|telegram\.org/, (r) => r.abort());
+    await ctx.route(/config\.local\.js/, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: "Object.assign(window.BEACON_CONFIG, { apiUrl: '' });" })); // testler sunucusuz modda çalışır
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {

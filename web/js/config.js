@@ -12,7 +12,7 @@
  */
 window.BEACON_CONFIG = {
   telegramBot: 'BeaconCrypto_Bot',   // botun kullanıcı adı (@ olmadan). Web girişi ve "Telegram'da aç" düğmesi için.
-  apiUrl: '',              // örn. 'https://beacon-api.onrender.com'. Boşsa uygulama sunucusuz (eski) modda çalışır.
+  apiUrl: 'https://beacon-api-g8up.onrender.com',   // Beacon sunucusu. Boş bırakılırsa Topluluk/Hesap görünmez (sunucusuz mod).
   // Tarayıcı sürümü (web) reklamı. null ise hiç reklam görünmez. Reklam, ziyaretçi onayından sonra yüklenir. Telegram içinde asla gösterilmez.
   //   AdSense: { provider: 'adsense', client: 'ca-pub-XXXXXXXXXXXXXXXX', slots: { a: '1234567890', b: '0987654321' } }
   //   Başka ağ: { provider: 'html', slots: { a: '<ağın verdiği kod>', b: '<...>' } }
@@ -26,3 +26,7 @@ window.BEACON_CONFIG = {
     // { id: 123456789, until: '2026-12-31', note: 'Örnek' },
   ],
 };
+
+/* Size özel değerler (Adsgram blok kimliği, webAds vb.) için js/config.local.js dosyası oluşturun; bu dosya varsa yukarıdaki değerlerin üzerine yazar.
+ * Örnek içerik:  Object.assign(window.BEACON_CONFIG, { adsgramBlockId: '12345' });
+ * Yeni sürüm yüklerken config.local.js'e dokunulmaz, ayarlarınız kaybolmaz. */

@@ -54,6 +54,17 @@ class Api(unittest.TestCase):
 
     POST = {"title": "BTC haftalık yapı analizi", "body": "Haftalık grafikte yükselen dipler korunuyor, direnç bölgesi test ediliyor. Bu bir eğitim amaçlı analizdir."}
 
+    def test_video(self):
+        self.ok("POST", "/api/admin/broadcasters", uid=ADMIN, body={"user_id": 1005, "display_name": "Video Yayıncı", "auto_approve": True})
+        self.err(422, "POST", "/api/b/posts", uid=1005, body={**self.POST, "video": "https://evil.example/watch?v=dQw4w9WgXcQ"})
+        self.err(422, "POST", "/api/b/posts", uid=1005, body={**self.POST, "video": "javascript:alert(1)"})
+        for v in ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ?t=5", "dQw4w9WgXcQ"):
+            p = self.ok("POST", "/api/b/posts", uid=1005, body={**self.POST, "video": v})
+            self.assertEqual(self.ok("GET", f"/api/posts/{p['id']}", uid=U1)["video"], "dQw4w9WgXcQ")
+        p = self.ok("POST", "/api/b/posts", uid=1005, body=self.POST)
+        self.assertEqual(self.ok("GET", f"/api/posts/{p['id']}", uid=U1)["video"], "")
+        self.assertTrue(all("video" in i for i in self.ok("GET", "/api/feed", uid=U1)["items"]))
+
     def test_web_login(self):
         u = {"id": 777001, "first_name": "Ayşe", "username": "ayse"}
         w = C.sign_login_widget(u, "123:TESTTOKEN", T0[0])

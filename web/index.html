@@ -35,6 +35,8 @@
         <button data-tf="1w" aria-pressed="false">1H</button>
         <span class="gap"></span>
         <button class="tool" id="zoomOut" aria-label="Uzaklaştır"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="9" r="5.5"/><path d="M13.5 13.5L17 17M6.5 9h5"/></svg></button>
+        <button class="tool" id="shareBtn" aria-label="Grafiği görsel olarak paylaş"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v9M6.5 6.5L10 3l3.5 3.5M4 11v5h12v-5"/></svg></button>
+        <button class="tool" id="fsBtn" aria-label="Tam ekran"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4"/></svg></button>
         <button class="tool" id="zoomIn" aria-label="Yakınlaştır"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="9" r="5.5"/><path d="M13.5 13.5L17 17M6.5 9h5M9 6.5v5"/></svg></button>
       </div>
 
@@ -256,11 +258,27 @@
 
   <div class="consent" id="consent" role="dialog" aria-label="Reklam tercihi"><p>Bu web sürümü reklam gösterebilir. Reklam sağlayıcıları çerez kullanabilir. Reddederseniz reklam yüklenmez, her şey aynı çalışır.</p><div class="row"><button class="cta" id="cOk">Kabul et</button><button class="cta ghost" id="cNo">Reddet</button></div></div>
 
+  <section class="mkfull" id="mkFull" role="dialog" aria-modal="true" aria-label="Gösterge tam ekran">
+    <header><div><h2 id="mfTitle"></h2><div class="mfv"><b class="num" id="mfVal"></b><span class="badge" id="mfBadge"></span></div></div>
+      <div class="mfbtns"><button class="chip" id="mfShare">Görsel</button><button class="chip" id="mfClose" aria-label="Kapat">Kapat ✕</button></div></header>
+    <div class="seg" id="mfRange" role="group" aria-label="Zaman aralığı"><button data-r="1y" aria-pressed="false">1 yıl</button><button data-r="4y" aria-pressed="false">4 yıl</button><button data-r="all" aria-pressed="true">Tümü</button></div>
+    <div class="mfc"><canvas id="mfCv" aria-label="Gösterge grafiği"></canvas></div>
+    <div class="lg" id="mfLegend"></div><p class="note" id="mfInfo"></p>
+  </section>
+
+  <div class="scrim" id="shareSheet" role="dialog" aria-modal="true" aria-label="Grafik görseli"><div class="panel">
+    <div class="grab"></div><h3>Grafik görseli</h3>
+    <img id="shareImg" class="big" alt="Beacon grafik görseli">
+    <p class="note" style="margin:8px 0 4px">Görselde Beacon adı ve logosu yer alır. Paylaşırken analizin yatırım tavsiyesi olmadığını unutmayın.</p>
+    <div class="acts"><button class="chip" id="shDl">İndir</button><button class="chip" id="shShare">Paylaş</button><button class="chip" id="shCopy">Kopyala</button><button class="chip" id="shClose">Kapat</button></div>
+  </div></div>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </div>
 
 <script src="https://sad.adsgram.ai/js/sad.min.js" async></script>
 <script src="js/config.js"></script>
+<script src="js/config.local.js" onerror="void 0"></script>
 <script src="js/api.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/data.js"></script>
