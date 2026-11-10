@@ -1,7 +1,7 @@
 /*  Beacon: arayüz ve uygulama mantığı */
 (function () {
   'use strict';
-  const B = window.Beacon, F = window.BeaconFormation, D = window.BeaconData, CFG = window.BEACON_CONFIG || {};
+  const B = window.Beacon, F = window.BeaconFormation, SC = window.BeaconScript, D = window.BeaconData, CFG = window.BEACON_CONFIG || {};
   const { fmtPrice } = window.BeaconFmt;
   const $ = (id) => document.getElementById(id);
   const tg = window.Telegram && window.Telegram.WebApp;
@@ -24,10 +24,11 @@
   const haptic = (k) => { try { if (!tg || !tg.HapticFeedback) return; k === 'ok' ? tg.HapticFeedback.notificationOccurred('success') : tg.HapticFeedback.impactOccurred('light'); } catch (e) {} };
 
   /* ——— kalıcı durum (localStorage + Telegram CloudStorage) ——— */
-  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false }, form: { pivot: 10, tol: 1.5, history: true, maxForms: 120 }, proUntil: 0, ads: { d: '', n: 0 }, ts: 0 };
+  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false }, form: { pivot: 10, tol: 1.5, history: true, maxForms: 120 }, proUntil: 0, ads: { d: '', n: 0 }, custom: [], ts: 0 };
   let S = JSON.parse(JSON.stringify(DEF));
   try { const r = JSON.parse(localStorage.getItem('bcn') || 'null'); if (r) S = Object.assign(S, r, { layers: Object.assign({}, DEF.layers, r.layers || {}) }); } catch (e) {}
   S.form = Object.assign({}, DEF.form, S.form);
+  if (S.sym === 'TON') S.sym = 'GRAM'; // Toncoin'in yeni adı
   function save() {
     S.ts = Date.now();
     const j = JSON.stringify(S);
@@ -175,6 +176,7 @@
       key: cur.key, candles, tfMs: r.cfg.ms,
       ema20: a.ema20, ema50: a.ema50, ema200: a.ema200, rsi: a.rsi, bbUp: a.bbUp, bbLo: a.bbLo,
       markers: r.sigs.map((s) => ({ i: s.i, side: s.side })), position: last, formation: cur.formation, formHistory: S.form.history ? cur.hist : [],
+      custom: customPlots(candles),
     };
     chart.setData(cur.data);
     $('skel').style.display = 'none'; $('chartMsg').classList.remove('on');
@@ -388,7 +390,7 @@
     if (ok) {
       const now = Date.now();
       S.proUntil = Math.min(Math.max(now, S.proUntil) + CFG.proMinutesPerAd * MIN, now + CFG.proMaxMinutes * MIN);
-      S.ads = { d: today(), n: adsUsed() + 1 }; save(); haptic('ok'); toast(`Pro ${CFG.proMinutesPerAd} dakika uzatıldı`);
+      S.ads = { d: today(), n: adsUsed() + 1 }; save(); haptic('ok'); toast(`Pro ${CFG.proMinutesPerAd >= 60 ? CFG.proMinutesPerAd / 60 + ' saat' : CFG.proMinutesPerAd + ' dakika'} uzatıldı`);
       if (view === 'scan') buildScan();
     }
     renderPro();
@@ -450,21 +452,21 @@
       return;
     }
     const left = S.proUntil - Date.now(), on = left > 0, st = $('proState');
-    if (on) { const m = Math.floor(left / MIN), s = Math.floor((left % MIN) / 1000); st.textContent = `${m}:${String(s).padStart(2, '0')}`; st.className = 'st num on'; }
+    if (on) { const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / MIN), s = Math.floor((left % MIN) / 1000), p2 = (x) => String(x).padStart(2, '0'); st.textContent = h ? `${h}:${p2(m)}:${p2(s)}` : `${m}:${p2(s)}`; st.className = 'st num on'; }
     else { st.textContent = 'Kapalı'; st.className = 'st num'; }
     const used = adsUsed();
-    $('proSub').textContent = on ? `Pro aktif · bugün ${used}/${CFG.adsPerDay} reklam` : `Kısa bir reklam izleyin, ${CFG.proMinutesPerAd} dakika boyunca tüm coinleri açın. Bugün ${used}/${CFG.adsPerDay}.`;
+    $('proSub').textContent = on ? `Pro aktif · bugün ${used}/${CFG.adsPerDay} reklam` : `Kısa bir reklam izleyin, ${CFG.proMinutesPerAd >= 60 ? CFG.proMinutesPerAd / 60 + ' saat' : CFG.proMinutesPerAd + ' dakika'} boyunca tüm coinleri açın. Bugün ${used}/${CFG.adsPerDay}.`;
     const btn = $('adBtn'), cap = left >= (CFG.proMaxMinutes - 1) * MIN, done = used >= CFG.adsPerDay;
     btn.disabled = adBusy || cap || done;
-    $('adBtnTxt').textContent = adBusy ? 'Reklam yükleniyor…' : done ? 'Bugünkü hak doldu' : cap ? 'Süre üst sınırda' : `Reklam izle · +${CFG.proMinutesPerAd} dk Pro`;
-    $('dayCap').textContent = CFG.adsPerDay;
+    $('adBtnTxt').textContent = adBusy ? 'Reklam yükleniyor…' : done ? 'Bugünkü hak doldu' : cap ? 'Süre üst sınırda' : `Reklam izle · +${CFG.proMinutesPerAd >= 60 ? CFG.proMinutesPerAd / 60 + ' sa' : CFG.proMinutesPerAd + ' dk'} Pro`;
+    $('dayCap').textContent = CFG.adsPerDay; $('capH').textContent = Math.round(CFG.proMaxMinutes / 60);
   }
   let wasPro = isPro();
   setInterval(() => {
     renderPro();
     const now = isPro();
     if (wasPro && !now) {
-      toast('Pro süresi bitti');
+      toast('Pro süresi bitti'); applyCustom(); if (view === 'market' && window.BeaconMarketUI) window.BeaconMarketUI.onView();
       if (!allowed(S.sym)) { S.sym = 'BTC'; save(); applyState(); loadRadar(); }
       if (view === 'scan') renderHeat();
     }
@@ -484,6 +486,7 @@
     if (v === 'scan') buildScan();
     if (v === 'perf') buildPerf();
     if (v === 'pro') renderPro();
+    if (v === 'market' && window.BeaconMarketUI) window.BeaconMarketUI.onView();
     if (window.BeaconCommunity) window.BeaconCommunity.onView(v);
   }
   $('dock').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { haptic(); go(b.dataset.v); } });
@@ -579,6 +582,50 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
   window.addEventListener('online', poll);
 
+
+  /* ——— Pro: kendi göstergelerim (formül dili, güvenli ayrıştırıcı) ——— */
+  const FX_MAX = 8;
+  function customPlots(candles) {
+    if (!SC || !isPro() || !Array.isArray(S.custom)) return [];
+    const out = [];
+    for (const f of S.custom) { if (!f.on) continue; try { for (const p of SC.run(f.code, candles)) out.push(p); } catch (e) { f.err = e.message; } }
+    return out.slice(0, 10);
+  }
+  function applyCustom() { if (!cur || !cur.data) return; cur.data.custom = customPlots(cur.candles); chart.setData(cur.data); }
+  let fxEditing = null;
+  function fxRender() {
+    const pro = isPro(), list = S.custom || [];
+    $('fxIntro').textContent = pro ? 'Kendi formülünüzü yazın, grafiğe ekleyin. Formüller cihazınızda çalışır ve geleceğe bakmaz.' : 'Kendi göstergelerinizi yazmak Pro ile açılır. Aşağıda örnekleri görebilirsiniz; Pro sayfasından reklam izleyerek açabilirsiniz.';
+    $('fxList').innerHTML = list.map((f, i) => `<div class="fxrow"><label class="sw"><input type="checkbox" data-fx-on="${i}" ${f.on ? 'checked' : ''} ${pro ? '' : 'disabled'}><span></span></label><div class="fxn"><b>${escH(f.name)}</b>${f.err ? `<div class="down" style="font-size:12px">${escH(f.err)}</div>` : ''}</div><button class="chip" data-fx-edit="${i}">Düzenle</button><button class="chip" data-fx-del="${i}" aria-label="Sil">Sil</button></div>`).join('') || '<p class="note" style="margin:10px 0">Henüz göstergeniz yok.</p>';
+    $('fxNew').hidden = !!fxEditing || list.length >= FX_MAX; $('fxList').hidden = !!fxEditing; $('fxEdit').hidden = !fxEditing;
+  }
+  const escH = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function fxOpenEditor(i) {
+    if (!isPro()) { toast('Gösterge yazmak Pro ile açılır'); closeSheet('fxSheet'); go('pro'); return; }
+    fxEditing = { i }; const f = i >= 0 ? S.custom[i] : null;
+    $('fxName').value = f ? f.name : 'Göstergem'; $('fxCode').value = f ? f.code : SC.TEMPLATES[0].code; $('fxErr').hidden = true;
+    $('fxTpls').innerHTML = SC.TEMPLATES.map((t, k) => `<button class="chip" data-tpl="${k}">${escH(t.name)}</button>`).join('');
+    fxRender();
+  }
+  $('fxBtn').onclick = () => { haptic(); fxEditing = null; fxRender(); openSheet('fxSheet'); };
+  $('fxNew').onclick = () => fxOpenEditor(-1);
+  $('fxCancel').onclick = () => { fxEditing = null; fxRender(); };
+  $('fxTpls').addEventListener('click', (e) => { const b = e.target.closest('[data-tpl]'); if (b) { const t = SC.TEMPLATES[+b.dataset.tpl]; $('fxCode').value = t.code; if (!$('fxName').value || $('fxName').value === 'Göstergem') $('fxName').value = t.name; } });
+  $('fxSave').onclick = () => {
+    const code = $('fxCode').value, name = ($('fxName').value || 'Göstergem').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 30) || 'Göstergem';
+    try { if (cur) SC.run(code, cur.candles); else SC.parse(code); }
+    catch (e) { const er = $('fxErr'); er.textContent = (e.line ? `Satır ${e.line}: ` : '') + (e.message || 'Hata'); er.hidden = false; return; }
+    S.custom = S.custom || []; const item = { id: Date.now(), name, code, on: true };
+    if (fxEditing.i >= 0) S.custom[fxEditing.i] = Object.assign(S.custom[fxEditing.i], item, { id: S.custom[fxEditing.i].id }); else S.custom.push(item);
+    fxEditing = null; save(); haptic('ok'); fxRender(); applyCustom(); toast('Gösterge grafiğe eklendi');
+  };
+  $('fxList').addEventListener('click', (e) => {
+    const ed = e.target.closest('[data-fx-edit]'), del = e.target.closest('[data-fx-del]');
+    if (ed) return fxOpenEditor(+ed.dataset.fxEdit);
+    if (del && confirm('Gösterge silinsin mi?')) { S.custom.splice(+del.dataset.fxDel, 1); save(); fxRender(); applyCustom(); }
+  });
+  $('fxList').addEventListener('change', (e) => { const c = e.target.closest('[data-fx-on]'); if (c) { S.custom[+c.dataset.fxOn].on = c.checked; S.custom[+c.dataset.fxOn].err = ''; save(); applyCustom(); fxRender(); } });
+
   /* ——— açılış ——— */
   if (!allowed(S.sym)) S.sym = 'BTC';
   applyState();
@@ -587,5 +634,5 @@
   if (srv()) API.refreshMe().then(() => { applyState(); if (window.BeaconCommunity) window.BeaconCommunity.init(); }).catch((e) => toast(e.message || 'Sunucuya bağlanılamadı'));
 
   /* test için dışa açılan küçük yüzey */
-  window.__beacon = { toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
+  window.__beacon = { applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
 })();

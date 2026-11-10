@@ -37,7 +37,7 @@
       this.cv = canvas; this.ctx = canvas.getContext('2d');
       this.d = null;
       this.barW = 7; this.shift = 0; this.rightPad = 6;
-      this.layers = { ema: true, bb: false, vol: true, rsi: false, markers: true, pos: true, form: true };
+      this.layers = { ema: true, bb: false, vol: true, rsi: false, custom: true, markers: true, pos: true, form: true };
       this.hover = -1; this.my = 0;
       this.onHover = opts.onHover || function () {};
       this.sweep = 1; this._raf = 0; this._pts = new Map();
@@ -160,8 +160,9 @@
       const L = this.layers, col = this.col, W = this.W, H = this.H, pw = this.plotW;
       const rsiOn = L.rsi && d.rsi;
       const paneBottom = H - this.timeH;
-      const rsiH = rsiOn ? Math.round((paneBottom) * 0.22) : 0;
-      const priceTop = 8, priceBot = paneBottom - rsiH - (rsiOn ? 6 : 0);
+      const cu = L.custom !== false && d.custom ? d.custom : [], ovl = cu.filter((x) => x.pane === 'price'), subs = cu.filter((x) => x.pane === 'sub'), subOn = subs.length > 0;
+      const rsiH = rsiOn ? Math.round((paneBottom) * (subOn ? 0.17 : 0.22)) : 0, subH = subOn ? Math.round(paneBottom * 0.2) : 0;
+      const priceTop = 8, priceBot = paneBottom - rsiH - subH - (rsiOn ? 6 : 0) - (subOn ? 6 : 0);
       const i0 = Math.max(0, Math.floor(this.R - pw / this.barW) - 1), i1 = Math.min(this.n - 1, Math.ceil(this.R));
       const cs = d.candles;
 
@@ -169,7 +170,7 @@
       let lo = Infinity, hi = -Infinity;
       for (let i = i0; i <= i1; i++) { if (cs[i].l < lo) lo = cs[i].l; if (cs[i].h > hi) hi = cs[i].h; }
       const ov = (arr) => { if (!arr) return; for (let i = i0; i <= i1; i++) { const v = arr[i]; if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } } };
-      if (L.ema) { ov(d.ema20); ov(d.ema50); } if (L.bb) { ov(d.bbUp); ov(d.bbLo); }
+      if (L.ema) { ov(d.ema20); ov(d.ema50); } for (const x of ovl) ov(x.values); if (L.bb) { ov(d.bbUp); ov(d.bbLo); }
       const pos = L.pos ? d.position : null;
       const posActive = pos && (pos.status === 'open' || pos.status === 'open_be' || pos.status === 'pending');
       if (posActive) { for (const v of [pos.sl, pos.tp1, pos.entry]) { if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } } }
@@ -248,6 +249,9 @@
       };
       if (L.ema) { if (d.ema200) poly(d.ema200, 'rgba(233,238,248,.45)', 1.2, [5, 4]); if (d.ema50) poly(d.ema50, col.beam, 1.5); if (d.ema20) poly(d.ema20, 'rgba(233,238,248,.8)', 1.2); }
 
+      /* kullanıcı göstergeleri (fiyat üstü) */
+      for (const x of ovl) poly(x.values, x.color, 1.6);
+
       /* mumlar */
       const bw = Math.max(1, Math.floor(this.barW * 0.66));
       for (let i = i0; i <= i1; i++) {
@@ -320,7 +324,7 @@
 
       /* RSI paneli */
       if (rsiOn) {
-        const t0 = priceBot + 6, t1 = paneBottom, ry = (v) => t0 + (100 - v) / 100 * (t1 - t0);
+        const t0 = priceBot + 6, t1 = t0 + rsiH, ry = (v) => t0 + (100 - v) / 100 * (t1 - t0);
         c.strokeStyle = col.rule; c.beginPath(); c.moveTo(0, t0 - 3.5); c.lineTo(W, t0 - 3.5); c.stroke();
         c.fillStyle = 'rgba(126,139,166,.07)'; c.fillRect(0, ry(70), pw, ry(30) - ry(70));
         c.strokeStyle = col.grid; for (const v of [30, 70]) { c.beginPath(); c.moveTo(0, Math.round(ry(v)) + 0.5); c.lineTo(pw, Math.round(ry(v)) + 0.5); c.stroke(); }
@@ -331,6 +335,34 @@
         for (let i = i0; i <= i1; i++) { const v = d.rsi[i]; if (!Number.isFinite(v)) { st = false; continue; } const xx = this.x(i), yy = ry(v); if (!st) { c.moveTo(xx, yy); st = true; } else c.lineTo(xx, yy); }
         c.strokeStyle = col.beam; c.lineWidth = 1.4; c.stroke(); c.lineWidth = 1; c.restore();
         c.font = `600 10px ${col.font}`; c.fillStyle = col.beam; c.textAlign = 'left'; c.fillText('RSI 14', 6, t0 + 9);
+      }
+
+      /* kullanıcı göstergeleri (alt panel) */
+      if (subOn) {
+        const t1 = paneBottom, t0 = t1 - subH;
+        let mn = Infinity, mx = -Infinity;
+        for (const x of subs) for (let i = i0; i <= i1; i++) { const v = x.values[i]; if (Number.isFinite(v)) { if (v < mn) mn = v; if (v > mx) mx = v; } }
+        if (!(mx > mn)) { mn = (Number.isFinite(mn) ? mn : 0) - 1; mx = mn + 2; }
+        const pad = (mx - mn) * 0.08; mn -= pad; mx += pad;
+        const sy = (v) => t0 + (mx - v) / (mx - mn) * (t1 - t0);
+        c.strokeStyle = col.rule; c.beginPath(); c.moveTo(0, t0 - 3.5); c.lineTo(W, t0 - 3.5); c.stroke();
+        c.fillStyle = col.fog; c.font = `500 10px ${col.font}`; c.textAlign = 'right'; c.textBaseline = 'middle';
+        const st2 = niceStep((mx - mn) / 3);
+        for (let v = Math.ceil(mn / st2) * st2; v < mx; v += st2) { const yy = Math.round(sy(v)) + 0.5; c.strokeStyle = col.grid; c.beginPath(); c.moveTo(0, yy); c.lineTo(pw, yy); c.stroke(); c.fillText(fmtAxis(v, st2), W - 6, yy); }
+        c.save(); c.beginPath(); c.rect(0, t0, pw, t1 - t0); c.clip();
+        for (const x of subs) {
+          c.beginPath(); let started = false;
+          for (let i = i0; i <= i1; i++) { const v = x.values[i]; if (!Number.isFinite(v)) { started = false; continue; } const xx = this.x(i), yy = sy(v); if (!started) { c.moveTo(xx, yy); started = true; } else c.lineTo(xx, yy); }
+          c.strokeStyle = x.color; c.lineWidth = 1.4; c.stroke();
+        }
+        c.lineWidth = 1; c.restore();
+      }
+      /* etiketler */
+      if (cu.length) {
+        c.font = `600 10px ${col.font}`; c.textAlign = 'left'; c.textBaseline = 'top'; let ty = priceTop + (d.formation ? 20 : 4);
+        for (const x of ovl) { c.fillStyle = x.color; c.fillText('— ' + x.label, 8, ty); ty += 13; }
+        let sy2 = paneBottom - subH + 3;
+        for (const x of subs) { c.fillStyle = x.color; c.fillText('— ' + x.label, 8, sy2); sy2 += 12; }
       }
 
       /* crosshair */

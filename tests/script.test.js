@@ -1,0 +1,50 @@
+// Çalıştırma: node tests/script.test.js
+const assert = require('assert');
+const S = require('../web/js/script.js'), B = require('../web/js/engine.js');
+let pass = 0; const ok = (c, m) => { assert(c, 'BAŞARISIZ: ' + m); pass++; console.log('PASS ' + m); };
+const cs = Array.from({ length: 300 }, (_, i) => { const c = 100 + Math.sin(i / 9) * 10 + i * 0.05; return { t: i, o: c - 0.3, h: c + 1, l: c - 1, c, v: 1000 + (i % 7) * 10 }; });
+const throws = (src, re, m) => { let e; try { S.run(src, cs); } catch (x) { e = x; } ok(e instanceof S.ScriptError && re.test(e.message), m + ' (' + (e && e.message) + ')'); return e; };
+
+let p = S.run('plot(ema(close, 20), "EMA", "#ffc25c")', cs);
+const ref = B.indicators.ema(cs.map((k) => k.c), 20);
+ok(p.length === 1 && p[0].pane === 'price' && p[0].label === 'EMA' && p[0].values.every((v, i) => (Number.isNaN(v) && Number.isNaN(ref[i])) || Math.abs(v - ref[i]) < 1e-9), 'ema motorla aynı sonucu verir');
+p = S.run('a = close - open\npane(a * 2 + 1, "x")', cs);
+ok(p[0].pane === 'sub' && Math.abs(p[0].values[10] - ((cs[10].c - cs[10].o) * 2 + 1)) < 1e-9, 'atama, aritmetik ve pane çalışır');
+p = S.run('plot(sma(close,5) > sma(close,20) ? 1 : -1)', cs);
+ok(p[0].values.slice(30).every((v) => v === 1 || v === -1), 'koşullu ifade ve karşılaştırma');
+p = S.run('plot(2 + 3 * 4 ^ 2 / 8 - 1)', cs);
+ok(p[0].values[0] === 2 + 3 * 16 / 8 - 1, 'işlem önceliği doğru');
+p = S.run('plot(-2 ^ 2)', cs); ok(p[0].values[0] === -4, 'üs alma tekli eksiden önce');
+p = S.run('plot(shift(close, 3))', cs);
+ok(Number.isNaN(p[0].values[2]) && p[0].values[10] === cs[7].c, 'shift yalnızca geçmişe bakar');
+throws('plot(shift(close, -1))', /geleceğe bakılamaz/, 'negatif shift (geleceğe bakış) engellenir');
+p = S.run('plot(crossover(ema(close,5), ema(close,20)))', cs);
+ok(p[0].values.every((v) => v === 0 || v === 1 || Number.isNaN(v)), 'crossover 0/1 üretir');
+p = S.run('plot(stdev(close, 10))', cs); ok(p[0].values[9] > 0 && Number.isNaN(p[0].values[8]), 'stdev');
+p = S.run('plot(close / 0)', cs); ok(p[0].values.every(Number.isNaN), 'sıfıra bölme NaN (çökmez)');
+p = S.run('plot(highest(high,10))\n// yorum\n\nplot(lowest(low,10))', cs); ok(p.length === 2, 'yorum ve boş satırlar yok sayılır');
+
+// güvenlik
+throws('plot(constructor)', /Tanımsız değişken/, 'prototip adlarına erişilemez');
+throws('plot(__proto__)', /Tanımsız/, '__proto__ erişimi yok');
+throws('plot(toString(1))', /Bilinmeyen işlev/, 'Object.prototype işlevleri çağrılamaz');
+throws('x = window', /Tanımsız/, 'window erişimi yok');
+throws('x = fetch("a")', /Bilinmeyen işlev/, 'fetch çağrılamaz');
+throws('plot(close; alert(1))', /Tanınmayan karakter/, 'noktalı virgül ve enjeksiyon reddedilir');
+throws('plot(ema(close, 99999))', /periyot/, 'devasa periyot reddedilir');
+throws('plot(ema(close, 2.5))', /periyot/, 'kesirli periyot reddedilir');
+throws('plot(ema(close, close))', /periyot/, 'seri periyot reddedilir');
+throws('close = 5\nplot(close)', /ayrılmış/, 'yerleşik ad yeniden tanımlanamaz');
+throws('plot(close, "a", "red")', /#rrggbb/, 'geçersiz renk reddedilir');
+throws('plot(close, "a", "javascript:x")', /#rrggbb/, 'renk metni enjeksiyonu reddedilir');
+throws('a = 1', /Çizilecek/, 'çizgisiz formül reddedilir');
+throws('plot(' + '('.repeat(40) + 'close' + ')'.repeat(40) + ')', /iç içe/, 'aşırı iç içe ifade reddedilir');
+throws('x'.repeat(2000), /en çok/, 'uzun formül reddedilir');
+throws(Array.from({ length: 50 }, (_, i) => 'a' + i + ' = close').join('\n') + '\nplot(close)', /[Ee]n çok/, 'çok satır reddedilir');
+throws(Array.from({ length: 8 }, () => 'plot(close)').join('\n'), /çizgi/, 'çok çizgi reddedilir');
+throws('plot(close) plot(close)', /Beklenmeyen/, 'bir satırda iki ifade reddedilir');
+const e = throws('a = close\nb = a +', /yarım|Beklenmeyen/, 'yarım ifade'); ok(e.line === 2, 'hata satır numarasını verir');
+throws('plot("a" + 1)', /Metinle/, 'metinle işlem reddedilir');
+const t0 = Date.now(); S.run('plot(stdev(sum(stdev(close,500),500),500))', cs); ok(Date.now() - t0 < 500, 'en pahalı işlem birkaç yüz ms içinde biter');
+ok(S.TEMPLATES.every((t) => { try { return S.run(t.code, cs).length > 0; } catch (x) { return false; } }), 'tüm hazır şablonlar çalışır');
+console.log(`\nTÜM FORMÜL TESTLERİ GEÇTİ (${pass})`);

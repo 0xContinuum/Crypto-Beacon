@@ -27,6 +27,7 @@ class Settings:
     webhook_secret: str = ""
     app_url: str = ""          # statik sitenin adresi (CORS ve /start düğmesi)
     public_url: str = ""       # bu API'nin adresi (webhook kaydı)
+    site_url: str = ""         # tanıtım sitesinin adresi (CORS)
     dev_mode: bool = False
     pro_seconds_per_ad: int = 3600
     pro_max_seconds: int = 6 * 3600
@@ -48,7 +49,7 @@ class Settings:
             admin_ids=_ids(e("ADMIN_IDS", "6394985954")) or {6394985954},
             adsgram_secret=e("ADSGRAM_SECRET", ""), adsgram_block_id=e("ADSGRAM_BLOCK_ID", ""),
             webhook_secret=e("WEBHOOK_SECRET", ""), app_url=e("APP_URL", "").rstrip("/"),
-            public_url=e("PUBLIC_URL", "").rstrip("/"), dev_mode=e("DEV_MODE", "") == "1")
+            public_url=e("PUBLIC_URL", "").rstrip("/"), site_url=e("SITE_URL", "").rstrip("/"), dev_mode=e("DEV_MODE", "") == "1")
 
     def now(self):
         return int(self.clock())

@@ -10,7 +10,7 @@ const SHOTS = path.join(__dirname, 'shots');
 fs.mkdirSync(SHOTS, { recursive: true });
 const PAGE = 'file://' + path.join(ROOT, 'index.html');
 const MS = { '15m': 9e5, '1h': 36e5, '4h': 144e5, '1d': 864e5, '1w': 6048e5 };
-const BASE = { BTC: 67000, ETH: 3400, SOL: 160, BNB: 590, XRP: 0.55, ADA: 0.45, DOGE: 0.16, AVAX: 36, LINK: 15, TON: 6.5 };
+const BASE = { BTC: 67000, ETH: 3400, SOL: 160, BNB: 590, XRP: 0.55, ADA: 0.45, DOGE: 0.16, AVAX: 36, LINK: 15, GRAM: 6.5 };
 
 function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function gauss(r) { return Math.sqrt(-2 * Math.log(r() || 1e-9)) * Math.cos(2 * Math.PI * r()); }
@@ -160,11 +160,11 @@ function series(sym, tf, n) {
   await page.click('#adBtn');
   await page.waitForFunction(() => /^\d+:\d\d$/.test(document.getElementById('proState').textContent), null, { timeout: 6000 });
   const left = await page.textContent('#proState');
-  ok(/^(29|30):\d\d$/.test(left), 'reklamdan sonra ~30 dk Pro (' + left + ')');
+  ok(/^(59:\d\d|1:00:00)$/.test(left), 'reklamdan sonra ~1 saat Pro (' + left + ')');
   await page.screenshot({ path: path.join(SHOTS, '08-pro.png'), fullPage: true });
   for (let k = 0; k < 6; k++) { if (await page.locator('#adBtn[disabled]').count()) break; await page.click('#adBtn'); await page.waitForTimeout(2300); }
   const st = await page.evaluate(() => window.__beacon.state());
-  ok(st.proUntil - Date.now() <= 120 * 60000 + 2000, 'Pro süresi 2 saati aşmaz');
+  ok(st.proUntil - Date.now() <= 360 * 60000 + 2000, 'Pro süresi 6 saati aşmaz');
   ok(st.ads.n <= 6, 'günlük reklam sınırı aşılmaz (' + st.ads.n + ')');
   await page.click('#dock [data-v="scan"]');
   await page.waitForFunction(() => document.querySelectorAll('#heat .cell[data-s]').length === 50, null, { timeout: 15000 });
@@ -197,8 +197,8 @@ function series(sym, tf, n) {
   await page.click('#dock [data-v="scan"]');
   await page.waitForFunction(() => document.querySelectorAll('#heat .cell[data-s]').length === 50, null, { timeout: 15000 });
   ok((await page.locator('#heat .cell.lock').count()) === 0, 'sahipte tüm coinler ve zaman dilimleri açık');
-  await page.click('#symBtn'); await page.click('#coinList [data-s="TON"]');
-  await page.waitForFunction(() => window.__beacon.state().sym === 'TON', null, { timeout: 5000 });
+  await page.click('#symBtn'); await page.click('#coinList [data-s="GRAM"]');
+  await page.waitForFunction(() => window.__beacon.state().sym === 'GRAM', null, { timeout: 5000 });
   ok(true, 'sahip kilitli coine doğrudan geçebilir');
   await page.close();
 

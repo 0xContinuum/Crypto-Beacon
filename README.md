@@ -67,6 +67,18 @@ Yerelde denemek için `DEV_MODE=1` ile sunucuyu açıp uygulamayı `?demo=1&dev=
 
 **Yasal ve riskler (avukat değilim)**: Ödeme yaptığınız kişilerin içeriği nedeniyle SPK mevzuatı (izinsiz yatırım danışmanlığı, menfaat sağlama) ve vergi konuları gündeme gelebilir. İlk ödemeden önce bir avukat ve mali müşavirden görüş alın. Adsgram kendi içerik kurallarını uygular; reklam hesabınız için ayrı bir başvuru önerilir. İçerik filtresi ilk savunma hattıdır, asıl güvence admin onayıdır.
 
+## Piyasa göstergeleri, özel göstergeler, GRAM
+- **Piyasa sekmesi** (`web/js/market.js`, `market-ui.js`): Bitcoin günlük verisinden kendi hesabımızla Pi Cycle Top, Mayer Çarpanı (herkese açık); 200 haftalık ortalama, 2 yıllık ortalama çarpanı, regresyon bandı (Rainbow benzeri) ve halving döngüsü (Pro). Hiçbir üçüncü taraf siteden veri kopyalanmaz.
+- **Özel gösterge** (`web/js/script.js`): Pro kullanıcı grafikte "ƒx" ile kendi formülünü yazar (`ema`, `sma`, `rsi`, `atr`, `plot`, `pane`...). Formüller `eval` ile değil kendi ayrıştırıcımızla çalışır; pencere/belge erişimi yoktur. Göstergeler hesapta saklanır.
+- **GRAM**: Toncoin, 15 Haziran 2026'da GRAM adını aldı (ağ adı TON kalıyor). Eski kayıtlı TON seçimi otomatik GRAM'a çevrilir.
+
+## Tanıtım sitesi ve reklamlar (`site/`)
+Ayrı bir statik site (render.yaml `beacon-site`). Ortak hesap dosyaları için değişiklikten sonra `sh scripts/sync-site.sh` çalıştırın.
+`site/js/config.js` içinde `ads` boşsa sitede hiç reklam görünmez. Reklam, ziyaretçi çerez onayı verdikten sonra yüklenir.
+- **Google AdSense:** `ads: { provider: 'adsense', client: 'ca-pub-...', slots: { a: '...', b: '...' } }`. AdSense'te siteyi ekleyin, onay bekleyin (gizlilik politikası, yeterli özgün içerik ve trafik gerekir). AB/BK trafiği için Google onaylı bir onay yönetim aracı (CMP) gerekir; sitedeki basit onay kutusu bunun yerine geçmez.
+- **Başka ağ:** `provider: 'html'` ile ağın verdiği kodu yapıştırın.
+- Telegram içi reklam (Adsgram) ile web reklamı ayrı gelirlerdir; yayıncı payı yalnızca Adsgram'dan gelen reklamlar için geçerlidir.
+
 ## Dürüst notlar
 - **Motorun avantajı kanıtlanmadı.** Testler hesapların doğru olduğunu gösterir, stratejinin kazandırdığını değil. Gerçek veride, farklı dönemlerde (walk-forward) doğrulayın. Sentetik veri sonuçları anlamsızdır.
 - Pro kilidi istemci tarafıdır; teknik kullanıcı aşabilir. Kilitlenen şey değerli bir ürün değil, kolaylıktır. Ücretli Pro (Stars) için sunucu doğrulaması gerekir (Faz 2).

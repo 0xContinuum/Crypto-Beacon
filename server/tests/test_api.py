@@ -92,6 +92,8 @@ class Api(unittest.TestCase):
         d = self.ok("GET", f"/api/posts/{p1['id']}", uid=U1); self.assertEqual(d["views"], 1)
         d = self.ok("GET", f"/api/posts/{p1['id']}", uid=U1); self.assertEqual(d["views"], 1, "tekrar bakış sayılmaz")
         self.assertEqual(self.ok("GET", f"/api/posts/{p1['id']}", uid=B1)["views"], 1, "yazarın kendi bakışı sayılmaz")
+        pf = self.ok("GET", "/api/public/feed")
+        self.assertEqual(len(pf["posts"]), 1); self.assertNotIn("body", pf["posts"][0]); self.assertEqual(pf["broadcaster_count"], 2)
         # beğeni / takip
         self.assertEqual(self.ok("POST", "/api/like", uid=U1, body={"post_id": p1["id"], "on": True})["likes"], 1)
         self.assertEqual(self.ok("POST", "/api/like", uid=U1, body={"post_id": p1["id"], "on": True})["likes"], 1)

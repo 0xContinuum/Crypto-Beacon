@@ -52,6 +52,7 @@
         <button class="chip" data-l="vol" aria-pressed="true">Hacim</button>
         <button class="chip" data-l="bb" aria-pressed="false">Bollinger</button>
         <button class="chip" data-l="rsi" aria-pressed="false">RSI</button>
+        <button class="chip" id="fxBtn" aria-label="Kendi göstergelerim">ƒx Göstergelerim</button>
       </div>
 
       <section class="sec" aria-labelledby="h-beacon">
@@ -89,6 +90,15 @@
       <section class="sec">
         <p class="note">Beacon bir analiz ve eğitim aracıdır. Yatırım tavsiyesi değildir. Skorlar ve tetikler geçmiş fiyat verisinden hesaplanır; gelecekteki sonucu garanti etmez.</p>
       </section>
+    </section>
+
+    <!-- PİYASA -->
+    <section id="v-market" class="view" aria-label="Piyasa">
+      <div class="seg" role="group" aria-label="Zaman aralığı" id="mkRange">
+        <button data-r="1y" aria-pressed="false">1 yıl</button><button data-r="4y" aria-pressed="false">4 yıl</button><button data-r="all" aria-pressed="true">Tümü</button>
+        <span class="gap"></span><span class="dim" style="font-size:12px">Bitcoin · günlük</span>
+      </div>
+      <div id="mkBox"></div>
     </section>
 
     <!-- TARAYICI -->
@@ -145,7 +155,7 @@
       <section class="sec" id="idSec">
         <h2>Telegram kimliğiniz</h2>
         <div class="idrow"><code id="myId" class="num">Telegram dışında açık</code><button class="chip" id="copyId">Kopyala</button></div>
-        <p class="note" style="margin-top:8px">Pro plan aktivasyonu için gerekli Telegram ID .</p>
+        <p class="note" style="margin-top:8px">Birine Pro vermek isterseniz o kişi uygulamayı Telegram'dan açıp bu sayıyı size iletsin.</p>
       </section>
       <section class="sec" id="ownerSec" hidden><span id="legacyOwner" hidden></span>
         <h2>Pro ver (yalnızca sahip)</h2>
@@ -189,6 +199,7 @@
 
   <nav class="dock" aria-label="Ana gezinme"><div id="dock">
     <button data-v="radar" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 4-7 5 5"/><path d="M3 21h18"/></svg>Radar</button>
+    <button data-v="market"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c3 0 3-7 6-7s3 14 6 14 3-7 6-7"/></svg>Piyasa</button>
     <button data-v="scan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>Tarayıcı</button>
     <button data-v="perf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>Performans</button>
     <button data-v="pro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>Pro</button>
@@ -205,6 +216,28 @@
     <label class="rng" id="histRow"><span>Geçmiş formasyon sayısı <b id="histV" class="num">120</b></span><input type="range" id="histR" min="10" max="250" step="10"></label>
     <button class="cta ghost" id="formReset">Varsayılana dön</button>
     <button class="cta" id="formOk">Tamam</button>
+  </div></div>
+
+  <div class="scrim" id="fxSheet" role="dialog" aria-modal="true" aria-label="Göstergelerim"><div class="panel">
+    <div class="grab"></div><h3>Göstergelerim <span class="pill">Pro</span></h3>
+    <p class="note" id="fxIntro">Kendi formülünüzü yazın, grafiğe ekleyin. Formüller cihazınızda çalışır ve geleceğe bakmaz.</p>
+    <div id="fxList"></div>
+    <div id="fxEdit" hidden>
+      <input id="fxName" maxlength="30" placeholder="Gösterge adı" aria-label="Gösterge adı">
+      <div class="tpls" id="fxTpls"></div>
+      <textarea id="fxCode" rows="8" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Formül"></textarea>
+      <div id="fxErr" class="fxerr" role="alert" hidden></div>
+      <details class="fxhelp"><summary>Yazım rehberi</summary>
+        <p><b>Veri:</b> open, high, low, close, volume, hl2, hlc3, ohlc4, tr</p>
+        <p><b>İşlevler:</b> sma, ema, rma, rsi, atr, stdev, sum, highest, lowest, shift, change, abs, sqrt, log, max, min, crossover, crossunder</p>
+        <p><b>İşleçler:</b> + − * / % ^ &lt; &gt; &lt;= &gt;= == != and or not, koşul: a ? b : c</p>
+        <p><b>Çizim:</b> <code>plot(ifade, "Ad", "#renk")</code> fiyatın üstüne, <code>pane(...)</code> alt panele. Her satır <code>ad = ifade</code> ya da plot/pane olmalı. Yorum: <code>//</code></p>
+      </details>
+      <button class="cta" id="fxSave">Kaydet ve ekle</button>
+      <button class="cta ghost" id="fxCancel" style="margin-top:8px">Vazgeç</button>
+    </div>
+    <button class="cta" id="fxNew">Yeni gösterge</button>
+    <p class="note" style="margin-top:12px">Gösterge, grafiğin geçmiş mumlarıyla hesaplanır; sonuç yatırım tavsiyesi değildir.</p>
   </div></div>
 
   <div class="scrim" id="legal" role="dialog" aria-modal="true" aria-labelledby="legalH"><div class="panel">
@@ -225,8 +258,11 @@
 <script src="js/engine.js"></script>
 <script src="js/data.js"></script>
 <script src="js/formation.js"></script>
+<script src="js/script.js"></script>
+<script src="js/market.js"></script>
 <script src="js/chart.js"></script>
 <script src="js/app.js"></script>
+<script src="js/market-ui.js"></script>
 <script src="js/community.js"></script>
 </body>
 </html>

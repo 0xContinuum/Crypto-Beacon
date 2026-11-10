@@ -7,7 +7,7 @@
   const COINS = [
     { s: 'BTC', n: 'Bitcoin', free: true }, { s: 'ETH', n: 'Ethereum', free: true }, { s: 'SOL', n: 'Solana', free: true },
     { s: 'BNB', n: 'BNB' }, { s: 'XRP', n: 'XRP' }, { s: 'ADA', n: 'Cardano' }, { s: 'DOGE', n: 'Dogecoin' },
-    { s: 'AVAX', n: 'Avalanche' }, { s: 'LINK', n: 'Chainlink' }, { s: 'TON', n: 'Toncoin' },
+    { s: 'AVAX', n: 'Avalanche' }, { s: 'LINK', n: 'Chainlink' }, { s: 'GRAM', n: 'Gram (eski Toncoin)' },
   ];
   const TFS = ['15m', '1h', '4h', '1d', '1w'];
   const cache = new Map(); // "BTC|1h" -> { candles, at }
@@ -45,6 +45,31 @@
     return candles;
   }
 
+  /** Uzun geçmiş: geriye doğru sayfalayarak (1000'er) en fazla `pages` sayfa. Piyasa göstergeleri için. */
+  async function loadLong(sym, tf, pages = 5) {
+    const key = sym + '|' + tf + '|long', c = cache.get(key);
+    if (c && Date.now() - c.at < 6 * 3600000) return c.candles;
+    let out = [], end = '';
+    for (let p = 0; p < pages; p++) {
+      let rows = null, err;
+      for (let a = 0; a < HOSTS.length && !rows; a++) {
+        const host = HOSTS[(hostIdx + a) % HOSTS.length], ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 12000);
+        try {
+          const r = await fetch(`${host}/api/v3/klines?symbol=${sym}USDT&interval=${tf}&limit=1000${end}`, { signal: ctl.signal });
+          clearTimeout(to); if (!r.ok) throw new Error('HTTP ' + r.status);
+          rows = await r.json();
+        } catch (e) { clearTimeout(to); err = e; }
+      }
+      if (!rows) { if (!out.length) throw err || new Error('ulaşılamadı'); break; }
+      if (!rows.length) break;
+      const part = parse(rows); out = part.concat(out);
+      if (rows.length < 1000) break;
+      end = '&endTime=' + (part[0].t - 1);
+    }
+    cache.set(key, { candles: out, at: Date.now() });
+    return out;
+  }
+
   /** Yalnızca son birkaç mumu çekip önbelleğe birleştirir. */
   async function refresh(sym, tf) {
     const key = sym + '|' + tf, c = cache.get(key);
@@ -79,5 +104,5 @@
     return candles[n - 1].t + tfMs > now ? n - 1 : n;
   }
 
-  root.BeaconData = { COINS, TFS, load, refresh, loadMany, closedCount, _cache: cache };
+  root.BeaconData = { COINS, TFS, load, loadLong, refresh, loadMany, closedCount, _cache: cache };
 })(typeof self !== 'undefined' ? self : this);

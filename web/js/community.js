@@ -23,6 +23,11 @@
   proBtn.insertAdjacentHTML('beforebegin', `<button data-v="feed">${ICON.feed}Topluluk</button>`);
   dock.insertAdjacentHTML('beforeend', `<button data-v="acct">${ICON.acct}Hesap</button>`);
 
+  /* Performans sekmesi 6'lı dock'a sığmadığı için Tarayıcı'dan bağlantıyla açılır */
+  const scanV = $('v-scan');
+  if (scanV) scanV.insertAdjacentHTML('afterbegin', '<div class="pad" style="padding-bottom:0"><button class="chip" id="toPerf">Geriye dönük test sonuçları →</button></div>');
+  $('toPerf').onclick = () => BX().go('perf');
+
   /* ——— akış ——— */
   let feedMode = 'all', items = [], next = '';
   const card = (p) => `<article class="post" data-id="${p.id}" tabindex="0">

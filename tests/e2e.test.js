@@ -42,7 +42,7 @@ const call = async (m, p, uid, body) => { const r = await fetch(API + p, { metho
 
     // yayıncı: paylaşım gönderir
     const b = await open(1001);
-    ok((await b.locator('#dock button').count()) === 6, 'sunucu modunda dock 6 sekme (Topluluk ve Hesap eklenir)');
+    ok((await b.locator('#dock button:visible').count()) === 6, 'sunucu modunda dock 6 sekme (Topluluk ve Hesap eklenir)');
     await tab(b, 'acct');
     ok(await b.locator('#bPanel #cSend').count() === 1, 'yayıncıya yayıncı paneli görünür');
     ok(await b.locator('#aPanel').count() === 0, 'yayıncıya yönetim paneli görünmez');

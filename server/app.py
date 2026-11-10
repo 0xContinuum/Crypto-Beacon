@@ -192,6 +192,18 @@ def create_app(S=None, db=None):
     def healthz(ctx):
         return {"ok": True}
 
+    @route("/api/public/feed", public=True)
+    def public_feed(ctx):
+        """Giriş gerektirmeyen son paylaşımlar (tanıtım sitesi için). Yalnızca yayındaki içerik, kısa özet."""
+        rows = db.q(POST_SELECT + "WHERE p.status='published' AND b.status='active' ORDER BY p.published_at DESC, p.id DESC LIMIT 6")
+        top = db.q("SELECT b.user_id, b.display_name, b.group_title, b.group_link, (SELECT COUNT(*) FROM follows f WHERE f.bcast_id=b.user_id) AS followers "
+                   "FROM broadcasters b WHERE b.status='active' ORDER BY followers DESC, b.created_at LIMIT 8")
+        n = db.one("SELECT COUNT(*) AS n FROM broadcasters WHERE status='active'")["n"]
+        return JSONResponse({"posts": [{"id": r["id"], "title": r["title"], "excerpt": r["body"][:180] + ("…" if len(r["body"]) > 180 else ""), "symbol": r["symbol"], "tf": r["tf"],
+                                        "published_at": r["published_at"], "author": r["display_name"], "group": r["group_title"], "views": r["views"], "likes": r["likes"]} for r in rows],
+                             "broadcasters": [{"name": b["display_name"], "group": b["group_title"], "link": b["group_link"], "followers": b["followers"]} for b in top], "broadcaster_count": n},
+                            headers={"Cache-Control": "public, max-age=60"})
+
     @route("/api/me")
     def me(ctx):
         uid = ctx.user["id"]
@@ -705,7 +717,7 @@ def create_app(S=None, db=None):
         return PlainTextResponse("ok")
     routes.append(Route("/tg/webhook", webhook, methods=["POST"]))
 
-    origins = [S.app_url] if S.app_url else ["*"]
+    origins = [u for u in (S.app_url, S.site_url) if u] or ["*"]
     app = Starlette(routes=routes, middleware=[Middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["x-init-data", "content-type"])])
     app.state.db, app.state.settings = db, S
     if S.bot_token and S.public_url and not S.dev_mode and not S.tg:
