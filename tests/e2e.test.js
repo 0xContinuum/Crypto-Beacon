@@ -13,7 +13,7 @@ const call = async (m, p, uid, body) => { const r = await fetch(API + p, { metho
   let browser;
   const db = path.join(require('os').tmpdir(), 'beacon_e2e_' + Date.now() + '.db');
   const srv = spawn('python3', ['-I', '-m', 'uvicorn', 'server.app:default_app', '--factory', '--port', String(API_PORT), '--log-level', 'error'],
-    { cwd: ROOT, env: { ...process.env, PYTHONPATH: ROOT, DEV_MODE: '1', DATABASE_URL: 'sqlite:///' + db, ADSGRAM_SECRET: 'x' }, stdio: 'inherit' });
+    { cwd: ROOT, env: { ...process.env, PYTHONPATH: ROOT, DEV_MODE: '1', BOT_TOKEN: '111:E2ETOKEN', TG_OFFLINE: '1', DATABASE_URL: 'sqlite:///' + db, ADSGRAM_SECRET: 'x' }, stdio: 'inherit' });
   const web = http.createServer((q, s) => {
     let f = path.join(WEB, decodeURIComponent(q.url.split('?')[0])); if (f.endsWith('/')) f += 'index.html';
     if (!f.startsWith(WEB) || !fs.existsSync(f)) { s.writeHead(404); return s.end(); }
@@ -104,6 +104,28 @@ const call = async (m, p, uid, body) => { const r = await fetch(API + p, { metho
     ok((await u.getAttribute('#pPlay', 'style')).includes('i.ytimg.com/vi/dQw4w9WgXcQ'), 'video önizleme görseli doğru kimliği kullanır');
     await u.click('#pPlay'); await u.waitForSelector('.vframe', { timeout: 9000 });
     ok((await u.getAttribute('.vframe', 'src')).startsWith('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'), 'reklamdan sonra gizlilik dostu YouTube oynatıcısı açılır');
+
+    // web girişi: bot üzerinden onay (alan adı tanımı gerekmez)
+    {
+      const wctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      await wctx.route(/binance\.com|adsgram|youtube|ytimg|t\.me|telegram\.org/, (r) => r.abort());
+      await wctx.addInitScript(() => { try { localStorage.setItem('bcn', JSON.stringify({ legal: true })); } catch (e) {} });
+      const wp = await wctx.newPage(); wp.on('pageerror', (e) => errors.push(String(e)));
+      await wp.goto(`http://127.0.0.1:${WEB_PORT}/index.html`); await wp.waitForSelector('#loginBtn', { timeout: 8000 });
+      ok(await wp.locator('#loginBtn').isVisible(), 'tarayıcıda "Telegram ile giriş" düğmesi görünür');
+      await wp.click('#loginBtn'); await wp.waitForSelector('.vcode');
+      const href = await wp.getAttribute('.scrim.on a.cta', 'href'), verify = (await wp.textContent('.vcode')).trim();
+      const code = /start=login_([\w-]+)/.exec(href)[1];
+      ok(code.slice(0, 4).toUpperCase() === verify, 'doğrulama kodu bağlantıdaki kodla eşleşir (' + verify + ')');
+      await sleep(2500); ok(await wp.locator('.vcode').count() === 1, 'onay gelmeden giriş yapılmaz');
+      await fetch(API + '/tg/webhook', { method: 'POST', body: JSON.stringify({ callback_query: { id: '1', data: 'lg:' + code, from: { id: 4242, first_name: 'Ayşe', username: 'ayse' }, message: { chat: { id: 4242 }, message_id: 1 } } }) });
+      await wp.waitForFunction(() => window.BeaconApi && window.BeaconApi.me, null, { timeout: 12000 });
+      ok(await wp.evaluate(() => window.BeaconApi.me.id) === 4242, 'bot onayından sonra tarayıcı giriş yapar');
+      await sleep(800); ok((await wp.textContent('#whoami')).includes('Ayşe'), 'üst çubukta kullanıcı adı görünür');
+      await wp.click('#dock [data-v="feed"]'); await sleep(900);
+      ok(await wp.locator('.empty:has-text("giriş yapın")').count() === 0, 'girişten sonra Topluluk açılır');
+      await wctx.close();
+    }
     ok(errors.length === 0, 'konsolda hata yok ' + errors.join('|'));
     console.log(`\nTÜM E2E TESTLERİ GEÇTİ (${n})`);
   } catch (e) { console.error(e); process.exitCode = 1; }

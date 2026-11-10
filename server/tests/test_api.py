@@ -54,6 +54,37 @@ class Api(unittest.TestCase):
 
     POST = {"title": "BTC haftalık yapı analizi", "body": "Haftalık grafikte yükselen dipler korunuyor, direnç bölgesi test ediliyor. Bu bir eğitim amaçlı analizdir."}
 
+    def webhook(self, upd):
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/tg/webhook", data=json.dumps(upd).encode(), method="POST")
+        return urllib.request.urlopen(req).read()
+
+    def test_bot_login(self):
+        c = self.ok("POST", "/api/auth/code", body={})
+        code = c["code"]; self.assertEqual(c["verify"], code[:4].upper())
+        self.assertEqual(self.ok("GET", f"/api/auth/code/{code}")["status"], "pending")
+        SENT.clear()
+        self.webhook({"message": {"text": "/start login_" + code, "chat": {"id": 88}, "from": {"id": 88, "first_name": "Veli", "username": "veli"}}})
+        kb = [p for m, p in SENT if m == "sendMessage" and p["chat_id"] == 88][-1]
+        self.assertIn(code[:4].upper(), kb["text"]); self.assertEqual(kb["reply_markup"]["inline_keyboard"][0][0]["callback_data"], "lg:" + code)
+        self.assertEqual(self.ok("GET", f"/api/auth/code/{code}")["status"], "pending", "onay gelmeden giriş yok")
+        # saldırgan kodu başkası onaylasa bile giriş yapan onaylayan olur; kod tek kullanımlık
+        self.webhook({"callback_query": {"id": "1", "data": "lg:" + code, "from": {"id": 88, "first_name": "Veli", "username": "veli"}, "message": {"chat": {"id": 88}, "message_id": 5}}})
+        r = self.ok("GET", f"/api/auth/code/{code}"); self.assertEqual(r["status"], "ok"); self.assertEqual(r["user"]["id"], 88)
+        s, d = self.call_h("GET", "/api/me", "web:" + r["token"]); self.assertEqual((s, d["id"]), (200, 88))
+        self.err(404, "GET", f"/api/auth/code/{code}")
+        # ikinci onay denemesi etkisiz
+        self.webhook({"callback_query": {"id": "2", "data": "lg:" + code, "from": {"id": 99}, "message": {"chat": {"id": 99}, "message_id": 6}}})
+        self.err(404, "GET", f"/api/auth/code/{code}")
+        # geçersiz ve süresi dolmuş
+        self.err(404, "GET", "/api/auth/code/yokyokyok1")
+        c2 = self.ok("POST", "/api/auth/code", body={}); T0[0] += 700
+        self.webhook({"callback_query": {"id": "3", "data": "lg:" + c2["code"], "from": {"id": 77}, "message": {"chat": {"id": 77}, "message_id": 7}}})
+        self.err(404, "GET", f"/api/auth/code/{c2['code']}")
+        # ADMIN kimliği başkasına geçmez: yalnızca callback'i gönderen kimlik kullanılır
+        c3 = self.ok("POST", "/api/auth/code", body={})
+        self.webhook({"callback_query": {"id": "4", "data": "lg:" + c3["code"], "from": {"id": 5551}, "message": {"chat": {"id": 5551}, "message_id": 8}}})
+        r3 = self.ok("GET", f"/api/auth/code/{c3['code']}"); self.assertEqual(r3["user"]["id"], 5551)
+
     def test_video(self):
         self.ok("POST", "/api/admin/broadcasters", uid=ADMIN, body={"user_id": 1005, "display_name": "Video Yayıncı", "auto_approve": True})
         self.err(422, "POST", "/api/b/posts", uid=1005, body={**self.POST, "video": "https://evil.example/watch?v=dQw4w9WgXcQ"})

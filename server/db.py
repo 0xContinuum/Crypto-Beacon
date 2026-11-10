@@ -25,6 +25,7 @@ SCHEMA = [
     "CREATE TABLE IF NOT EXISTS payouts ({PK}, bcast_id BIGINT, amount_micro BIGINT, network TEXT, wallet TEXT, status TEXT, txid TEXT DEFAULT '', note TEXT DEFAULT '', created_at BIGINT, decided_at BIGINT DEFAULT 0)",
     "CREATE TABLE IF NOT EXISTS adjustments ({PK}, bcast_id BIGINT, amount_micro BIGINT, note TEXT DEFAULT '', created_at BIGINT)",
     "CREATE TABLE IF NOT EXISTS grants (user_id BIGINT PRIMARY KEY, until BIGINT DEFAULT 0, note TEXT DEFAULT '')",
+    "CREATE TABLE IF NOT EXISTS login_codes (code TEXT PRIMARY KEY, user_id BIGINT DEFAULT 0, username TEXT DEFAULT '', first_name TEXT DEFAULT '', created_at BIGINT, used INTEGER DEFAULT 0)",
     "CREATE TABLE IF NOT EXISTS audit ({PK}, actor BIGINT, action TEXT, detail TEXT DEFAULT '', created_at BIGINT)",
 ]
 

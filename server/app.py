@@ -2,6 +2,7 @@
 Reklam atfı: Adsgram Reward URL bildirimi tek doğruluk kaynağıdır; istemci beyanı sayılmaz."""
 import base64
 import json
+import os
 import re
 import secrets
 import threading
@@ -55,6 +56,8 @@ def create_app(S=None, db=None):
 
     # ——— Telegram Bot API ———
     def tg(method, payload):
+        if os.environ.get("TG_OFFLINE") == "1":
+            return None
         if S.tg:
             return S.tg(method, payload)
         if not S.bot_token:
@@ -209,9 +212,45 @@ def create_app(S=None, db=None):
                              "broadcasters": [{"name": b["display_name"], "group": b["group_title"], "link": b["group_link"], "followers": b["followers"]} for b in top], "broadcaster_count": n},
                             headers={"Cache-Control": "public, max-age=60"})
 
+    def client_ip(ctx):
+        xf = ctx.request.headers.get("x-forwarded-for", "")
+        return xf.split(",")[0].strip() if xf else (ctx.request.client.host if ctx.request.client else "?")
+
+    # ——— bot ile web girişi (alan adı tanımı gerektirmez) ———
+    LOGIN_TTL = 600
+
+    def login_row(code):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{8,40}", code or ""):
+            return None
+        r = db.one("SELECT * FROM login_codes WHERE code=?", (code,))
+        return r if r and now() - r["created_at"] <= LOGIN_TTL else None
+
+    @route("/api/auth/code", methods=("POST",), public=True)
+    def auth_code(ctx):
+        ip = client_ip(ctx)
+        rate(ip, "logincode", 12, 600)
+        db.x("DELETE FROM login_codes WHERE created_at < ?", (now() - 3600,))
+        code = secrets.token_urlsafe(9)
+        db.x("INSERT INTO login_codes (code, created_at) VALUES (?,?)", (code, now()))
+        return {"code": code, "verify": code[:4].upper(), "ttl": LOGIN_TTL}
+
+    @route("/api/auth/code/{code}", public=True)
+    def auth_code_status(ctx):
+        ip = client_ip(ctx)
+        rate(ip, "loginpoll", 300, 600)
+        r = login_row(ctx.p["code"])
+        if not r or r["used"]:
+            raise ApiError(404, "Kod geçersiz veya süresi dolmuş")
+        if not r["user_id"]:
+            return {"status": "pending"}
+        if not db.x("UPDATE login_codes SET used=1 WHERE code=? AND used=0", (r["code"],)):
+            raise ApiError(404, "Kod geçersiz veya süresi dolmuş")
+        user = {"id": r["user_id"], "username": r["username"], "first_name": r["first_name"]}
+        return {"status": "ok", "token": C.make_web_token(user, S.bot_token, now()), "user": user}
+
     @route("/api/auth/web", methods=("POST",), public=True)
     def auth_web(ctx):
-        ip = ctx.request.client.host if ctx.request.client else "?"
+        ip = client_ip(ctx)
         rate(ip, "webauth", 20, 600)
         try:
             user = C.verify_login_widget(ctx.body, S.bot_token, now())
@@ -727,6 +766,30 @@ def create_app(S=None, db=None):
             upd = await request.json()
             msg = upd.get("message") or {}
             text, chat = (msg.get("text") or ""), (msg.get("chat") or {}).get("id")
+            cb = upd.get("callback_query")
+            if cb and str(cb.get("data", "")).startswith("lg:"):
+                code, who = cb["data"][3:], cb.get("from") or {}
+                r = await run_in_threadpool(login_row, code)
+                ok = False
+                if r and not r["used"] and not r["user_id"] and who.get("id"):
+                    await run_in_threadpool(db.x, "UPDATE login_codes SET user_id=?, username=?, first_name=? WHERE code=? AND user_id=0",
+                                            (int(who["id"]), C.clean(who.get("username"), 40), C.clean(who.get("first_name"), 60), code))
+                    ok = True
+                await run_in_threadpool(tg, "answerCallbackQuery", {"callback_query_id": cb.get("id"), "text": "Giriş onaylandı" if ok else "Kod geçersiz veya süresi dolmuş"})
+                m = cb.get("message") or {}
+                if m.get("chat"):
+                    await run_in_threadpool(tg, "editMessageText", {"chat_id": m["chat"]["id"], "message_id": m.get("message_id"),
+                                            "text": "✅ Giriş onaylandı. Tarayıcıdaki Beacon sayfasına dönebilirsiniz." if ok else "Bu giriş kodunun süresi dolmuş. Siteden yeniden deneyin."})
+                return PlainTextResponse("ok")
+            if chat and text.startswith("/start login_"):
+                code = text[len("/start login_"):].strip()
+                r = await run_in_threadpool(login_row, code)
+                if r and not r["used"] and not r["user_id"]:
+                    await run_in_threadpool(tg, "sendMessage", {"chat_id": chat, "text": f"Beacon web girişi isteği.\n\nDoğrulama kodu: {code[:4].upper()}\nBu kod tarayıcıdaki kodla aynıysa ve girişi siz başlattıysanız onaylayın. Başlatmadıysanız hiçbir şey yapmayın.",
+                                                                "reply_markup": {"inline_keyboard": [[{"text": "✅ Girişi onayla", "callback_data": "lg:" + code}]]}})
+                else:
+                    await run_in_threadpool(tg, "sendMessage", {"chat_id": chat, "text": "Bu giriş kodunun süresi dolmuş. Siteden yeniden deneyin."})
+                return PlainTextResponse("ok")
             if chat and text.startswith(("/start", "/help")):
                 kb = {"inline_keyboard": [[{"text": "Beacon'ı aç", "web_app": {"url": S.app_url}}]]} if S.app_url else None
                 payload = {"chat_id": chat, "text": "Beacon: kripto analiz terminali ve topluluk. Grafikler, skor, formasyonlar ve yayıncıların analizleri tek uygulamada.\n\nYatırım tavsiyesi değildir."}
@@ -741,7 +804,7 @@ def create_app(S=None, db=None):
     app = Starlette(routes=routes, middleware=[Middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["x-init-data", "content-type"])])
     app.state.db, app.state.settings = db, S
     if S.bot_token and S.public_url and not S.dev_mode and not S.tg:
-        threading.Thread(target=lambda: tg("setWebhook", {"url": S.public_url + "/tg/webhook", "secret_token": S.webhook_secret or None, "allowed_updates": ["message"]}), daemon=True).start()
+        threading.Thread(target=lambda: tg("setWebhook", {"url": S.public_url + "/tg/webhook", "secret_token": S.webhook_secret or None, "allowed_updates": ["message", "callback_query"]}), daemon=True).start()
     return app
 
 

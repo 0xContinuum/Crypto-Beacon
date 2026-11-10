@@ -11,13 +11,33 @@
   const open = $('openTg'); if (bot) open.href = 'https://t.me/' + bot; else open.hidden = true;
   if (!API.on) return;
   const who = $('whoami');
-  window.BeaconLogin = async (u) => {
-    try {
-      const r = await fetch(API.base + '/api/auth/web', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(u) });
-      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Giriş başarısız');
-      API.setToken(d.token); location.reload();
-    } catch (e) { window.__beacon && window.__beacon.toast(e.message || 'Giriş başarısız'); }
-  };
+  const $$ = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
+  const toast = (m) => window.__beacon && window.__beacon.toast(m);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  /* Bot üzerinden giriş: alan adı tanımı gerektirmez. Kod üretilir, kullanıcı botta onaylar, sayfa onayı bekler. */
+  async function botLogin() {
+    let c; try { c = await API.call('POST', '/api/auth/code', {}); } catch (e) { return toast(e.message || 'Sunucuya ulaşılamadı'); }
+    const link = 'https://t.me/' + bot + '?start=login_' + c.code;
+    const sc = $$('div', 'scrim on'); sc.setAttribute('role', 'dialog'); sc.setAttribute('aria-modal', 'true');
+    sc.innerHTML = `<div class="panel"><div class="grab"></div><h3>Telegram ile giriş</h3>
+      <p>1. Aşağıdaki düğmeyle botu açın ve <b>Başlat</b>'a basın.<br>2. Botun yazdığı doğrulama kodu burada görünenle aynıysa <b>Girişi onayla</b>'ya dokunun.</p>
+      <div class="vcode num" aria-label="Doğrulama kodu">${c.verify}</div>
+      <a class="cta" href="${link}" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Telegram'da aç</a>
+      <p class="note" id="lgSt" style="margin-top:10px">Onay bekleniyor…</p>
+      <button class="cta ghost" id="lgX" style="min-height:46px">Vazgeç</button></div>`;
+    document.body.appendChild(sc); let stop = false; const close = () => { stop = true; sc.remove(); };
+    sc.querySelector('#lgX').onclick = close; sc.addEventListener('click', (e) => { if (e.target === sc) close(); });
+    window.open(link, '_blank', 'noopener');
+    const until = Date.now() + c.ttl * 1000;
+    while (!stop && Date.now() < until) {
+      await sleep(2000); if (stop) return;
+      try {
+        const r = await API.call('GET', '/api/auth/code/' + encodeURIComponent(c.code));
+        if (r.status === 'ok') { API.setToken(r.token); location.reload(); return; }
+      } catch (e) { if (e.status === 404) break; }
+    }
+    if (!stop) { const st = sc.querySelector('#lgSt'); if (st) st.textContent = 'Süre doldu. Pencereyi kapatıp yeniden deneyin.'; }
+  }
   function logged() {
     const me = API.me; who.textContent = me ? (me.first_name || me.username || String(me.id)) : '';
     const b = document.createElement('button'); b.className = 'chip'; b.textContent = 'Çıkış'; b.onclick = () => { API.setToken(''); location.reload(); }; box.appendChild(b);
@@ -25,9 +45,7 @@
   if (API.hasToken()) {
     const t = setInterval(() => { if (API.me) { clearInterval(t); logged(); } }, 300); setTimeout(() => clearInterval(t), 8000);
   } else if (bot) {
-    const s = document.createElement('script'); s.async = true; s.src = 'https://telegram.org/js/telegram-widget.js?22';
-    s.setAttribute('data-telegram-login', bot); s.setAttribute('data-size', 'medium'); s.setAttribute('data-radius', '10'); s.setAttribute('data-onauth', 'BeaconLogin(user)'); s.setAttribute('data-request-access', 'write');
-    $('tgLogin').appendChild(s);
+    const b = document.createElement('button'); b.className = 'chip login'; b.id = 'loginBtn'; b.textContent = 'Telegram ile giriş'; b.onclick = botLogin; $('tgLogin').appendChild(b);
   }
 })();
 
