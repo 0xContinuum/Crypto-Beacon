@@ -198,3 +198,65 @@ def valid_image(data_url, max_bytes=250_000):
 
 
 GROUP_LINK_RE = re.compile(r"^https://t\.me/[A-Za-z0-9_+\-/]{3,64}$")
+
+
+# ——— web girişi (Telegram Login Widget) ———
+def _b64(b):
+    import base64
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def _unb64(t):
+    import base64
+    return base64.urlsafe_b64decode(t + "=" * (-len(t) % 4))
+
+
+def verify_login_widget(data, bot_token, now, max_age=3600):
+    """Telegram Login Widget verisini doğrular (anahtar = SHA256(bot_token))."""
+    if not bot_token or not isinstance(data, dict):
+        raise AuthError("giriş verisi yok")
+    d = {k: str(v) for k, v in data.items() if k != "hash" and v is not None}
+    got = str(data.get("hash", ""))
+    check = "\n".join(f"{k}={d[k]}" for k in sorted(d))
+    want = hmac.new(hashlib.sha256(bot_token.encode()).digest(), check.encode(), hashlib.sha256).hexdigest()
+    if not got or not hmac.compare_digest(got, want):
+        raise AuthError("imza geçersiz")
+    try:
+        if now - int(d.get("auth_date", "0")) > max_age:
+            raise AuthError("oturum süresi dolmuş")
+        uid = int(d["id"])
+    except (ValueError, KeyError):
+        raise AuthError("kullanıcı bilgisi okunamadı")
+    return {"id": uid, "username": d.get("username", ""), "first_name": d.get("first_name", "")}
+
+
+def sign_login_widget(user, bot_token, auth_date):
+    """Yalnızca test için."""
+    d = {**{k: str(v) for k, v in user.items()}, "auth_date": str(auth_date)}
+    check = "\n".join(f"{k}={d[k]}" for k in sorted(d))
+    d["hash"] = hmac.new(hashlib.sha256(bot_token.encode()).digest(), check.encode(), hashlib.sha256).hexdigest()
+    return d
+
+
+def _web_key(bot_token):
+    return hashlib.sha256(b"beacon-web-session:" + bot_token.encode()).digest()
+
+
+def make_web_token(user, bot_token, now, ttl=30 * 86400):
+    body = _b64(json.dumps({"id": user["id"], "u": user.get("username", ""), "f": user.get("first_name", ""), "exp": now + ttl}, separators=(",", ":")).encode())
+    return body + "." + hmac.new(_web_key(bot_token), body.encode(), hashlib.sha256).hexdigest()
+
+
+def read_web_token(token, bot_token, now):
+    try:
+        body, sig = token.split(".", 1)
+        if not bot_token or not hmac.compare_digest(sig, hmac.new(_web_key(bot_token), body.encode(), hashlib.sha256).hexdigest()):
+            raise AuthError("oturum geçersiz")
+        d = json.loads(_unb64(body))
+        if d["exp"] < now:
+            raise AuthError("oturum süresi dolmuş")
+        return {"id": int(d["id"]), "username": d.get("u", ""), "first_name": d.get("f", "")}
+    except AuthError:
+        raise
+    except Exception:
+        raise AuthError("oturum geçersiz")

@@ -420,11 +420,16 @@
     adBusy = false; renderPro();
   }
   function renderProServer() {
-    const me = API.me; if (!me) return;
+    const me = API.me;
+    if (API.web) {
+      $('adBtn').hidden = true; $('starsBtn').hidden = true;
+      if (!me) { $('proState').textContent = 'Kapalı'; $('proState').className = 'st num'; $('proSub').textContent = 'Pro için Telegram ile giriş yapın. Pro süresi Telegram uygulamasında reklam izleyerek kazanılır; hesabınız aynıdır.'; return; }
+    }
+    if (!me) return;
     $('myId').textContent = String(me.id);
     $('ownerSec').hidden = true; $('legacyOwner').hidden = true;
     const p = me.pro, a = me.ads, st = $('proState'), fixed = p.active && p.source !== 'ads';
-    $('adBtn').hidden = fixed; $('starsBtn').hidden = fixed;
+    $('adBtn').hidden = fixed || !!API.web; $('starsBtn').hidden = fixed || !!API.web;
     const hrs = Math.round(a.pro_seconds_per_ad / 3600 * 10) / 10, cap = Math.round(a.pro_max_seconds / 3600);
     $('dayCap').textContent = a.pro_limit; $('capH').textContent = cap;
     if (fixed) {
@@ -437,6 +442,7 @@
     else { st.textContent = 'Kapalı'; st.className = 'st num'; }
     const done = a.pro_used >= a.pro_limit, full = on && left >= (a.pro_max_seconds - 60) * 1000;
     $('proSub').textContent = on ? `Pro aktif · bugün ${a.pro_used}/${a.pro_limit} reklam` : `Kısa bir reklam izleyin, ${hrs} saat boyunca tüm coinleri açın. Bugün ${a.pro_used}/${a.pro_limit}.`;
+    if (API.web && !fixed) $('proSub').textContent = on ? 'Pro aktif. Süreyi Telegram uygulamasında reklam izleyerek uzatabilirsiniz.' : 'Pro kapalı. Telegram uygulamasında kısa bir reklam izleyerek açabilirsiniz; hesabınız aynıdır.';
     $('adBtn').disabled = adBusy || done || full;
     $('adBtnTxt').textContent = adBusy ? 'Reklam yükleniyor…' : done ? 'Bugünkü hak doldu' : full ? 'Süre üst sınırda' : `Reklam izle · +${hrs} saat Pro`;
   }
@@ -631,7 +637,7 @@
   applyState();
   if (!S.legal) openSheet('legal');
   loadRadar();
-  if (srv()) API.refreshMe().then(() => { applyState(); if (window.BeaconCommunity) window.BeaconCommunity.init(); }).catch((e) => toast(e.message || 'Sunucuya bağlanılamadı'));
+  if (srv() && (!API.web || API.hasToken())) API.refreshMe().then(() => { applyState(); if (window.BeaconCommunity) window.BeaconCommunity.init(); }).catch((e) => toast(e.message || 'Sunucuya bağlanılamadı'));
 
   /* test için dışa açılan küçük yüzey */
   window.__beacon = { applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };

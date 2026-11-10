@@ -62,7 +62,7 @@ hesabınıza geçince "tahsil edildi" işaretleyin; yayıncı bakiyesi ancak o z
 
 **Hesaplama**: yayıncı kazancı = günlük gelir × (yayıncının doğrulanmış reklamı / max(Adsgram gösterimi, bizim kaydımız)) × pay. Tüm tutarlar tam sayı mikro-dolardır.
 
-**Testler**: `python3 -I server/tests/test_core.py`, `python3 -I server/tests/test_api.py`, `node tests/e2e.test.js`.
+**Testler**: `python3 -I server/tests/test_core.py`, `python3 -I server/tests/test_api.py`, `node tests/e2e.test.js`, `node tests/desktop.test.js`.
 Yerelde denemek için `DEV_MODE=1` ile sunucuyu açıp uygulamayı `?demo=1&dev=<kimlik>` ile açın (yalnızca geliştirme; canlıda asla açmayın).
 
 **Yasal ve riskler (avukat değilim)**: Ödeme yaptığınız kişilerin içeriği nedeniyle SPK mevzuatı (izinsiz yatırım danışmanlığı, menfaat sağlama) ve vergi konuları gündeme gelebilir. İlk ödemeden önce bir avukat ve mali müşavirden görüş alın. Adsgram kendi içerik kurallarını uygular; reklam hesabınız için ayrı bir başvuru önerilir. İçerik filtresi ilk savunma hattıdır, asıl güvence admin onayıdır.
@@ -72,12 +72,13 @@ Yerelde denemek için `DEV_MODE=1` ile sunucuyu açıp uygulamayı `?demo=1&dev=
 - **Özel gösterge** (`web/js/script.js`): Pro kullanıcı grafikte "ƒx" ile kendi formülünü yazar (`ema`, `sma`, `rsi`, `atr`, `plot`, `pane`...). Formüller `eval` ile değil kendi ayrıştırıcımızla çalışır; pencere/belge erişimi yoktur. Göstergeler hesapta saklanır.
 - **GRAM**: Toncoin, 15 Haziran 2026'da GRAM adını aldı (ağ adı TON kalıyor). Eski kayıtlı TON seçimi otomatik GRAM'a çevrilir.
 
-## Tanıtım sitesi ve reklamlar (`site/`)
-Ayrı bir statik site (render.yaml `beacon-site`). Ortak hesap dosyaları için değişiklikten sonra `sh scripts/sync-site.sh` çalıştırın.
-`site/js/config.js` içinde `ads` boşsa sitede hiç reklam görünmez. Reklam, ziyaretçi çerez onayı verdikten sonra yüklenir.
-- **Google AdSense:** `ads: { provider: 'adsense', client: 'ca-pub-...', slots: { a: '...', b: '...' } }`. AdSense'te siteyi ekleyin, onay bekleyin (gizlilik politikası, yeterli özgün içerik ve trafik gerekir). AB/BK trafiği için Google onaylı bir onay yönetim aracı (CMP) gerekir; sitedeki basit onay kutusu bunun yerine geçmez.
-- **Başka ağ:** `provider: 'html'` ile ağın verdiği kodu yapıştırın.
-- Telegram içi reklam (Adsgram) ile web reklamı ayrı gelirlerdir; yayıncı payı yalnızca Adsgram'dan gelen reklamlar için geçerlidir.
+## Web sürümü (masaüstü terminali) ve reklamlar
+Aynı uygulama (`web/`) tarayıcıda açılınca **masaüstü terminali** olur: ≥1100 px genişlikte sol menü, büyük grafik, yan panel, çok sütunlu Piyasa ve Topluluk. Telegram içinde mini uygulama olarak çalışmaya devam eder. Tek yayın, tek adres; kendi alan adınızı Render'da bu siteye bağlayın.
+- **Giriş:** Tarayıcıda "Telegram ile giriş" düğmesi görünür (Telegram Login Widget). BotFather'da `/setdomain` ile site adresinizi bota tanıtın. Giriş sunucuda imzayla doğrulanır; hesap, Pro ve yayıncı bilgileri Telegram'dakiyle aynıdır. `web/js/config.js` içindeki `telegramBot` bot kullanıcı adıdır.
+- **Pro:** Reklamla Pro yalnızca Telegram'da (Adsgram) kazanılır; web, aynı hesabın Pro durumunu gösterir.
+- **Web reklamı:** `web/js/config.js` içinde `webAds` boşsa hiç reklam görünmez. Google AdSense için `{ provider: 'adsense', client: 'ca-pub-...', slots: { a: '...', b: '...' } }`. Reklam, ziyaretçi onayından sonra yüklenir, Telegram içinde asla gösterilmez. AB/BK ziyaretçileri için Google onaylı bir onay aracı (CMP) gerekir; yerleşik kutu onun yerine geçmez. AdSense onayı kripto içerikte gecikebilir ya da çıkmayabilir.
+- **Tanıtım sayfası:** `web/hakkinda/` (özellikler, SSS, yasal metinler).
+- **Tanıtım videosu:** `node video/build.js` uygulamanın örnek verili ekranlarından sessiz video, `altyazi.srt` ve `seslendirme.txt` üretir.
 
 ## Dürüst notlar
 - **Motorun avantajı kanıtlanmadı.** Testler hesapların doğru olduğunu gösterir, stratejinin kazandırdığını değil. Gerçek veride, farklı dönemlerde (walk-forward) doğrulayın. Sentetik veri sonuçları anlamsızdır.

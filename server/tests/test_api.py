@@ -19,7 +19,7 @@ def free_port():
 class Api(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        S = C.Settings(database_url="sqlite:///:memory:", dev_mode=True, adsgram_secret="s3", clock=lambda: T0[0],
+        S = C.Settings(bot_token="123:TESTTOKEN", database_url="sqlite:///:memory:", dev_mode=True, adsgram_secret="s3", clock=lambda: T0[0],
                        tg=lambda m, p: SENT.append((m, p)), app_url="https://app.example")
         cls.app = create_app(S)
         cls.port = free_port()
@@ -53,6 +53,30 @@ class Api(unittest.TestCase):
         s, d = self.call(*a, **k); self.assertEqual(s, code, d); return d
 
     POST = {"title": "BTC haftalık yapı analizi", "body": "Haftalık grafikte yükselen dipler korunuyor, direnç bölgesi test ediliyor. Bu bir eğitim amaçlı analizdir."}
+
+    def test_web_login(self):
+        u = {"id": 777001, "first_name": "Ayşe", "username": "ayse"}
+        w = C.sign_login_widget(u, "123:TESTTOKEN", T0[0])
+        r = self.ok("POST", "/api/auth/web", body=w)
+        self.assertEqual(r["user"]["id"], 777001)
+        s, d = self.call_h("GET", "/api/me", "web:" + r["token"])
+        self.assertEqual(s, 200); self.assertEqual(d["id"], 777001); self.assertFalse(d["is_admin"])
+        bad = dict(w); bad["id"] = ADMIN
+        self.err(401, "POST", "/api/auth/web", body=bad)
+        old = C.sign_login_widget(u, "123:TESTTOKEN", T0[0] - 7200)
+        self.err(401, "POST", "/api/auth/web", body=old)
+        s, _ = self.call_h("GET", "/api/me", "web:" + r["token"][:-2] + "00"); self.assertEqual(s, 401)
+        admin_tok = C.make_web_token({"id": ADMIN, "username": "a", "first_name": "A"}, "123:TESTTOKEN", T0[0])
+        s, d = self.call_h("GET", "/api/me", "web:" + admin_tok); self.assertTrue(d["is_admin"])
+        s, _ = self.call_h("GET", "/api/me", "web:" + C.make_web_token({"id": 5}, "123:TESTTOKEN", T0[0] - 40 * 86400)); self.assertEqual(s, 401)
+
+    def call_h(self, method, path, init):
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method, headers={"X-Init-Data": init})
+        try:
+            r = urllib.request.urlopen(req)
+        except urllib.error.HTTPError as e:
+            r = e
+        return r.status, json.loads(r.read())
 
     def test_all(self):
         # kimlik

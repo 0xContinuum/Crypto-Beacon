@@ -1,0 +1,51 @@
+1
+00:00:00,400 --> 00:00:04,700
+Beacon. Kripto grafiğini tek bakışta okuyun.
+
+2
+00:00:05,400 --> 00:00:18,500
+Beacon, kripto grafiğini tek bakışta okumanızı sağlar. Trend, momentum, hacim ve yapı tek bir skorda toplanır: eksi yüz ile artı yüz arasında. Skor bir eğilim ölçüsüdür, al-sat çağrısı değildir.
+
+3
+00:00:19,200 --> 00:00:26,233
+Skor eşiği geçtiğinde tetik oluşur. Giriş referansı, geçersizlik seviyesi ve iki hedef grafikte hazır gelir.
+
+4
+00:00:26,933 --> 00:00:35,267
+Formasyon Merkezi üçgenleri, takozları, ikili tepe ve dipleri bulur. Eski çizgiler silinmez, destek ve direnç bölgelerini görmenizi sağlar.
+
+5
+00:00:35,967 --> 00:00:43,433
+Tarayıcı, coinleri ve zaman dilimlerini tek tabloda gösterir. Hangi coin hangi vadede güçlü, bir bakışta görün.
+
+6
+00:00:44,133 --> 00:00:53,333
+Piyasa sekmesi Bitcoin döngü göstergelerini fiyattan kendi hesabımızla çıkarır: Pi Cycle, Mayer çarpanı, iki yüz haftalık ortalama ve halving döngüsü.
+
+7
+00:00:54,033 --> 00:00:58,433
+Pro kullanıcılar kendi göstergelerini formülle yazıp doğrudan grafiğe ekleyebilir.
+
+8
+00:00:59,133 --> 00:01:06,167
+Telegram içinde mini uygulama olarak, bilgisayarda geniş ekranlı terminal olarak çalışır. Hesabınız her yerde aynıdır.
+
+9
+00:01:06,867 --> 00:01:16,067
+Topluluk sekmesi, dağınık Telegram topluluklarını tek çatı altında toplar. Yalnızca onaylı yayıncılar paylaşım yapar ve her paylaşım yayından önce incelenir.
+
+10
+00:01:16,767 --> 00:01:25,100
+Yayıncılar paylaşımlarından gelen reklam gelirinin yüzde ellisini kazanır, kazançlarını kendi panelinden izler ve yüz dolardan itibaren ödeme ister.
+
+11
+00:01:25,800 --> 00:01:33,267
+Sahip, yönetim menüsünden her yayıncının izlenen reklam videosu sayısını görür, paylaşımları onaylar ve ödeme taleplerini sonuçlandırır.
+
+12
+00:01:33,967 --> 00:01:43,167
+Pro isteğe bağlıdır. Reklam izleyerek açın: reklam başına bir saat, günde en fazla altı reklam. Ücretsiz katman her zaman açıktır.
+
+13
+00:01:43,867 --> 00:01:49,167
+Beacon. Telegram’da açın, tarayıcıdan da kullanın. Yatırım tavsiyesi değildir.

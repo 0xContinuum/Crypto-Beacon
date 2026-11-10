@@ -21,6 +21,7 @@
     </button>
     <div class="px"><div id="price" class="num">–</div><div id="chg" class="num dim">–</div></div>
     <div class="live" id="live" role="status"><i></i><span>bağlanıyor</span></div>
+    <div class="webtools" id="webTools" hidden><a class="chip" id="openTg" href="#" target="_blank" rel="noopener noreferrer">Telegram'da aç</a><div id="tgLogin"></div><span class="dim" id="whoami"></span></div>
   </header>
 
   <main>
@@ -55,6 +56,7 @@
         <button class="chip" id="fxBtn" aria-label="Kendi göstergelerim">ƒx Göstergelerim</button>
       </div>
 
+      <aside class="side">
       <section class="sec" aria-labelledby="h-beacon">
         <h2 id="h-beacon">Beacon skoru</h2>
         <div class="dialwrap">
@@ -90,6 +92,8 @@
       <section class="sec">
         <p class="note">Beacon bir analiz ve eğitim aracıdır. Yatırım tavsiyesi değildir. Skorlar ve tetikler geçmiş fiyat verisinden hesaplanır; gelecekteki sonucu garanti etmez.</p>
       </section>
+        <div class="adslot" data-slot="a"></div>
+      </aside>
     </section>
 
     <!-- PİYASA -->
@@ -99,6 +103,7 @@
         <span class="gap"></span><span class="dim" style="font-size:12px">Bitcoin · günlük</span>
       </div>
       <div id="mkBox"></div>
+      <div class="adslot" data-slot="b"></div>
     </section>
 
     <!-- TARAYICI -->
@@ -249,6 +254,8 @@
     <button class="cta" id="legalOk">Anladım, devam et</button>
   </div></div>
 
+  <div class="consent" id="consent" role="dialog" aria-label="Reklam tercihi"><p>Bu web sürümü reklam gösterebilir. Reklam sağlayıcıları çerez kullanabilir. Reddederseniz reklam yüklenmez, her şey aynı çalışır.</p><div class="row"><button class="cta" id="cOk">Kabul et</button><button class="cta ghost" id="cNo">Reddet</button></div></div>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </div>
 
@@ -264,5 +271,6 @@
 <script src="js/app.js"></script>
 <script src="js/market-ui.js"></script>
 <script src="js/community.js"></script>
+<script src="js/web.js"></script>
 </body>
 </html>

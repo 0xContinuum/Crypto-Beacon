@@ -94,6 +94,11 @@ def create_app(S=None, db=None):
             except ValueError:
                 raise ApiError(401, "Giriş doğrulanamadı")
             user = {"id": uid, "username": f"dev{uid}", "first_name": "Dev"}
+        elif h.startswith("web:"):
+            try:
+                user = C.read_web_token(h[4:], S.bot_token, now())
+            except C.AuthError as e:
+                raise ApiError(401, f"Giriş doğrulanamadı: {e}")
         else:
             try:
                 user = C.verify_init_data(h, S.bot_token, now())
@@ -203,6 +208,16 @@ def create_app(S=None, db=None):
                                         "published_at": r["published_at"], "author": r["display_name"], "group": r["group_title"], "views": r["views"], "likes": r["likes"]} for r in rows],
                              "broadcasters": [{"name": b["display_name"], "group": b["group_title"], "link": b["group_link"], "followers": b["followers"]} for b in top], "broadcaster_count": n},
                             headers={"Cache-Control": "public, max-age=60"})
+
+    @route("/api/auth/web", methods=("POST",), public=True)
+    def auth_web(ctx):
+        ip = ctx.request.client.host if ctx.request.client else "?"
+        rate(ip, "webauth", 20, 600)
+        try:
+            user = C.verify_login_widget(ctx.body, S.bot_token, now())
+        except C.AuthError as e:
+            raise ApiError(401, f"Giriş doğrulanamadı: {e}")
+        return {"token": C.make_web_token(user, S.bot_token, now()), "user": user}
 
     @route("/api/me")
     def me(ctx):

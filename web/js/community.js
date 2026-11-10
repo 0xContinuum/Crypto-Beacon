@@ -37,8 +37,10 @@
     <p>${esc(p.excerpt)}</p>
     <div class="pf">${p.symbol ? `<span class="tag">${esc(p.symbol)}${p.tf ? ' · ' + esc(p.tf) : ''}</span>` : ''}<span class="dim">♥ ${p.likes}</span><span class="dim">👁 ${p.views}</span></div></article>`;
 
+  const needLogin = (box) => { box.innerHTML = `<div class="empty"><b>Topluluk için giriş yapın</b><p class="note">Sağ üstteki "Telegram ile giriş" düğmesini kullanın. Hesabınız Telegram uygulamasındakiyle aynıdır.</p></div>`; };
   async function loadFeed(more) {
     const box = $('feedBox');
+    if (API.web && !API.me) return needLogin(box);
     if (feedMode === 'bcast') return loadBroadcasters();
     if (!more) { items = []; next = ''; box.innerHTML = '<p class="note pad">Yükleniyor…</p>'; }
     const q = (feedMode === 'following' ? '&following=1' : '') + (more && next ? '&before=' + next : '');
@@ -85,6 +87,7 @@
       <div class="adbox"><b>Yayıncıyı destekle</b><p class="note">Kısa bir reklam izleyin; reklam geliri bu yayıncıyla paylaşılır. Tamamen isteğe bağlıdır.</p>
       <button class="cta" id="pSup" style="margin-top:8px;min-height:46px">Reklam izle · yayıncıyı destekle</button>
       ${me.pro.source === 'ads' || !me.pro.active ? `<button class="cta ghost" id="pPro" style="margin-top:8px;min-height:46px">Reklam izle · +${Math.round(me.ads.pro_seconds_per_ad / 360) / 10} saat Pro</button>` : ''}</div>`);
+    if (API.web) { const ab = s.querySelector('.adbox'); if (ab) ab.innerHTML = '<b>Yayıncıyı destekle</b><p class="note">Reklam gelirinin yayıncıya yazılması için bu paylaşımı Telegram uygulamasında açıp reklam izleyin.</p>'; }
     const on = (i, fn) => { const el = s.querySelector('#' + i); if (el) el.onclick = fn; };
     on('pLike', async () => { const r = await guard(() => API.call('POST', '/api/like', { post_id: id, on: !p.liked })); if (r) { p.liked = r.liked; p.likes = r.likes; const b = s.querySelector('#pLike'); b.textContent = '♥ ' + r.likes; b.setAttribute('aria-pressed', r.liked); } });
     on('pFollow', async () => { if (mine) return toast('Kendinizi takip edemezsiniz'); const r = await guard(() => API.call('POST', '/api/follow', { bcast_id: p.author.id, on: !p.following })); if (r) { p.following = r.following; const b = s.querySelector('#pFollow'); b.textContent = r.following ? 'Takipte' : 'Takip et'; b.setAttribute('aria-pressed', r.following); } });
@@ -96,6 +99,7 @@
   /* ——— hesap ——— */
   async function loadAcct() {
     const me = API.me, box = $('acctBox');
+    if (API.web && !me) return needLogin(box);
     if (!me) { box.innerHTML = '<p class="note pad">Yükleniyor…</p>'; return; }
     let h = `<section class="sec"><h2>Hesap</h2><div class="idrow"><span>${esc(me.first_name || me.username || 'Kullanıcı')}</span><code class="num">${me.id}</code></div>
       <p class="note" style="margin-top:8px">${me.is_admin ? 'Sahip hesabı' : me.broadcaster ? 'Yayıncı' : 'Okuyucu'} · Pro: ${me.pro.active ? 'açık' : 'kapalı'}</p></section>`;
@@ -187,6 +191,6 @@
 
   window.BeaconCommunity = {
     init() { if (BX() && document.querySelector('#v-feed.on')) loadFeed(); },
-    onView(v) { if (v === 'feed') loadFeed(); if (v === 'acct') API.refreshMe().then(loadAcct).catch((e) => toast(e.message)); },
+    onView(v) { if (v === 'feed') loadFeed(); if (v === 'acct') { if (API.web && !API.hasToken()) return loadAcct(); API.refreshMe().then(loadAcct).catch((e) => toast(e.message)); } },
   };
 })();

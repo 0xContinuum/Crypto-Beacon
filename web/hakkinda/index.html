@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Beacon | Kripto analiz terminali ve topluluk</title>
+<meta name="description" content="Beacon, Telegram içinde açılan kripto analiz terminali: trend, momentum, formasyon, Bitcoin döngü göstergeleri ve yayıncıların analizleri tek yerde.">
+<meta name="theme-color" content="#060a12">
+<meta property="og:title" content="Beacon: kripto grafiğini tek bakışta okuyun">
+<meta property="og:description" content="Skor, formasyonlar, Bitcoin döngü göstergeleri ve Telegram toplulukları tek uygulamada.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d1422'/%3E%3Cpath d='M16 5l4 7h-8z' fill='%23ffc25c'/%3E%3Cpath d='M13 14h6l2 13H11z' fill='%23e9eef8'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/InterDisplay-Bold.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a class="skip" href="#icerik">İçeriğe geç</a>
+<header class="nav"><div class="wrap">
+  <a class="brand" href="#" aria-label="Beacon ana sayfa"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0d1422" stroke="#1a2438"/><path d="M16 5l4 7h-8z" fill="#ffc25c"/><path d="M13 14h6l2 13H11z" fill="#e9eef8"/><path d="M12.4 19h7.2M11.8 23h8.4" stroke="#0d1422" stroke-width="1.6"/></svg>Beacon</a>
+  <nav aria-label="Bölümler"><a href="../">Terminal</a><a href="#skor">Skor</a><a href="#piyasa">Piyasa</a><a href="#gosterge">Göstergeler</a><a href="#topluluk">Topluluk</a><a href="#sss">Sorular</a><a class="btn" data-tg href="https://t.me/BeaconCrypto_Bot">Telegram'da aç</a></nav>
+</div></header>
+
+<main id="icerik">
+<section class="hero dark">
+  <div class="wrap"><div class="grid">
+    <div>
+      <h1>Kripto grafiğini tek bakışta okuyun.</h1>
+      <p class="lede">Beacon, Telegram içinde açılan bir analiz terminali. Trend, momentum, hacim ve formasyonları tek bir skora indirger; yanında Bitcoin döngü göstergelerini ve yayıncıların analizlerini getirir.</p>
+      <div class="cta"><a class="btn" data-tg href="https://t.me/BeaconCrypto_Bot">Telegram'da aç</a><a class="btn ghost" href="#piyasa">Piyasa göstergelerine bak</a></div>
+      <small>Ücretsiz başlar. Telegram hesabınızla girersiniz, ayrı üyelik gerekmez.</small>
+      <div class="ticker num" id="ticker" aria-label="Canlı fiyatlar"></div>
+    </div>
+    <div class="chartpanel" aria-label="Canlı Bitcoin grafiği ve Beacon skoru">
+      <div class="beam" id="beam"></div>
+      <div class="cp-head"><b>BTC/USDT</b><span class="dim" style="color:var(--fog);font-size:14px">1 saatlik</span><span class="px num" id="cpPx">–</span><span class="ch num" id="cpCh"></span></div>
+      <canvas id="hero-cv" role="img" aria-label="Son 96 saatlik mum grafiği"></canvas>
+      <div class="score"><div class="big num" id="cpScore">–</div><div><div class="v" id="cpVerdict">Hesaplanıyor</div><div class="s">Beacon skoru, −100 ile +100</div></div><div class="meter" aria-hidden="true"><i id="cpMeter"></i></div></div>
+    </div>
+  </div></div>
+  <div class="hero-sp"></div>
+</section>
+
+<section class="light pad" id="skor">
+  <div class="wrap split">
+    <div>
+      <h2>Dört bileşen, tek skor.</h2>
+      <p class="mut">Skor −100 ile +100 arasındadır. Yukarısı yükseliş, aşağısı düşüş eğilimini gösterir. Nasıl hesaplandığı uygulamada açıkça yazar; kara kutu yoktur.</p>
+      <p class="mut">Her tetik için geriye dönük test yapılır: komisyon ve kayma düşülür, stop ile hedef aynı mumda görülürse stop önce sayılır. Sonuçlar geçmişe aittir, geleceği garanti etmez.</p>
+      <div class="cta" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:30px"><a class="btn" data-tg href="https://t.me/BeaconCrypto_Bot">Skoru uygulamada gör</a></div>
+    </div>
+    <div class="parts">
+      <div class="part"><b>Trend</b><span>EMA 20, 50 ve 200'ün dizilimi ve eğimi.</span></div>
+      <div class="part"><b>Momentum</b><span>MACD histogramı ve RSI.</span></div>
+      <div class="part"><b>Hacim</b><span>Chaikin para akışı: hareketin arkasında hacim var mı.</span></div>
+      <div class="part"><b>Yapı</b><span>20 mumluk aralıktaki konum ve kırılım. Grafikte formasyonlar (üçgen, takoz, ikili tepe ve dip) çizilir ve eskileri silinmez, destek ve direnç olarak kalır.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="dark pad" id="piyasa">
+  <div class="wrap">
+    <h2>Bitcoin döngüsü, kendi hesabımızla.</h2>
+    <p class="lede" style="margin-top:20px">Aşağıdaki iki gösterge şu an, Binance günlük verisinden tarayıcınızda hesaplanıyor. Telif sahibi sitelerden veri kopyalanmaz; her gösterge fiyattan türetilir.</p>
+    <div class="mk-grid" id="mkGrid"><div class="mk"><h3>Mayer Çarpanı</h3><div class="val num">…</div></div><div class="mk"><h3>Pi Cycle Top</h3><div class="val num">…</div></div></div>
+    <div class="proline"><span class="chipx">Mayer Çarpanı</span><span class="chipx">Pi Cycle Top</span><span class="chipx pro">200 hafta ortalama</span><span class="chipx pro">2 yıllık ortalama çarpanı</span><span class="chipx pro">Regresyon bantları</span><span class="chipx pro">Halving döngüsü</span></div>
+    <p class="mk-note">İlk ikisi herkese açık, diğer dördü Pro ile açılır. Zincir üstü göstergeler (MVRV, NUPL gibi) fiyattan hesaplanamaz, bu yüzden dahil değildir. Geçmiş davranış gelecekte tekrar etmeyebilir.</p>
+  </div>
+</section>
+
+<div class="adband dark"><div class="adslot" data-slot="a"></div></div>
+
+<section class="light pad" id="gosterge">
+  <div class="wrap split rev">
+    <pre class="code" aria-label="Örnek gösterge formülü"><span class="c">// 20 ve 50 mumluk ortalama farkı</span>
+hizli = <span class="f">ema</span>(close, 20)
+yavas = <span class="f">ema</span>(close, 50)
+
+<span class="f">plot</span>(hizli, <span class="s">"EMA 20"</span>, <span class="s">"#ffc25c"</span>)
+<span class="f">plot</span>(yavas, <span class="s">"EMA 50"</span>, <span class="s">"#6ea8ff"</span>)
+<span class="f">pane</span>((hizli - yavas) / yavas * 100, <span class="s">"Fark %"</span>)</pre>
+    <div>
+      <h2>Kendi göstergenizi yazın.</h2>
+      <p class="mut">Pro ile bir formül yazın, grafiğin üstüne ya da alt paneline çizilsin. Formüller cihazınızda çalışır ve geleceğe bakamaz; bu yüzden gösterge sonradan değişmez.</p>
+      <ul class="tick">
+        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg><span>EMA, SMA, RSI, ATR, en yüksek ve en düşük, kesişim ve daha fazlası</span></li>
+        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg><span>Hata olursa satır numarasıyla ve ne yapılacağıyla gösterilir</span></li>
+        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg><span>Hazır şablonlardan başlayıp değiştirebilirsiniz</span></li>
+        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg><span>Göstergeleriniz hesabınızla birlikte kalır, istediğiniz zaman açıp kapatırsınız</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="dark pad" id="topluluk">
+  <div class="wrap split">
+    <div>
+      <h2>Dağınık Telegram toplulukları, tek çatıda.</h2>
+      <p class="mut">Kripto toplulukları yüzlerce ayrı grupta yaşıyor. Beacon grup kurucularını yayıncı yapar ve analizlerini tek akışta toplar; okuyucu tek yerden hepsini takip eder.</p>
+      <p class="mut">Al/sat çağrısı ve hedef fiyat yoktur. Her paylaşım yayından önce incelenir, şikayet alan içerik otomatik gizlenir.</p>
+      <div class="cta" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:30px"><a class="btn" data-tg href="https://t.me/BeaconCrypto_Bot">Akışı aç</a></div>
+    </div>
+    <div id="comm"><div class="soon">Yayıncılar burada görünecek. Topluluğunuz varsa aşağıdaki "Yayıncı olun" bölümünden başvurabilirsiniz.</div></div>
+  </div>
+</section>
+
+<section class="light pad" id="yayinci">
+  <div class="wrap split rev">
+    <ol class="steps">
+      <li><div><b>Başvurun</b><span>Telegram kimliğinizi iletin. Topluluğunuzu inceler, yayıncı olarak ekleriz.</span></div></li>
+      <li><div><b>Paylaşın</b><span>Analizinizi ve grafik görüntünüzü yazın. Yayından önce incelenir.</span></div></li>
+      <li><div><b>Okuyucular destekler</b><span>Biri paylaşımınızın sayfasında reklam izlediğinde o reklamın geliri size yazılır.</span></div></li>
+      <li><div><b>Kazancı izleyin</b><span>Hesap sekmesinde izlenen reklam sayısı ve kazancınız görünür.</span></div></li>
+      <li><div><b>Ödeme isteyin</b><span>Ödenebilir bakiye 100 doları geçince talep edin. Ödeme USDT (TRC20, BEP20) ya da TON ağında yapılır.</span></div></li>
+    </ol>
+    <div>
+      <h2>Paylaşımınızın reklam gelirinin yarısı sizin.</h2>
+      <p class="mut">Pay oranı %50'dir. Gelir, reklam ağından tahsil edildikten sonra ödenebilir hale gelir; böylece henüz alınmamış para üzerinden söz verilmez.</p>
+      <div class="formula">Günlük reklam geliri × paylaşımlarınızdan gelen reklamların payı × %50</div>
+      <p class="mut" style="margin-top:18px">Dürüst olalım: mobil ödüllü reklam başına gelir küçüktür. Güncel CPM ile 100 dolar kazanç yaklaşık 100 bin reklam izlemesi demektir ve bu rakam reklam ağına göre değişir. Kazanç garantisi verilmez.</p>
+      <div class="cta" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:28px"><a class="btn" data-tg href="https://t.me/BeaconCrypto_Bot">Yayıncı olun</a></div>
+    </div>
+  </div>
+</section>
+
+<div class="adband light"><div class="adslot" data-slot="b"></div></div>
+
+<section class="dark pad" id="pro">
+  <div class="wrap">
+    <h2>Pro'yu reklam izleyerek açın.</h2>
+    <p class="lede" style="margin-top:20px">Tüm coinler, tüm Piyasa göstergeleri ve kendi göstergeleriniz. Reklam izlemek isteğe bağlıdır; ücretsiz katman her zaman açıktır.</p>
+    <div class="facts"><div><b class="num">1 saat</b><span>her reklam için</span></div><div><b class="num">6 saat</b><span>toplam üst sınır</span></div><div><b class="num">6</b><span>günde en fazla reklam</span></div></div>
+    <p class="mut">Süre sunucuda doğrulanır. Telegram Stars ile Pro satın alma yakında eklenecek.</p>
+  </div>
+</section>
+
+<section class="light pad" id="sss">
+  <div class="wrap">
+    <h2 style="margin-bottom:40px">Sık sorulanlar</h2>
+    <details><summary>Beacon yatırım tavsiyesi verir mi?</summary><p>Hayır. Skorlar, tetikler ve test sonuçları geçmiş fiyat verisinden hesaplanan göstergelerdir. Kripto varlıklar yüksek risk taşır; kararlar ve sorumluluk size aittir.</p></details>
+    <details><summary>Ücretsiz mi?</summary><p>Evet. Bitcoin, Ethereum ve Solana tam açıktır; iki Piyasa göstergesi de ücretsizdir. Diğer coinler, kalan göstergeler ve kendi göstergeleriniz Pro ile açılır.</p></details>
+    <details><summary>Fiyat verisi nereden geliyor?</summary><p>Binance'in herkese açık mum verisinden. Veri doğrudan cihazınıza gelir; Beacon hesaplamaları cihazınızda yapar.</p></details>
+    <details><summary>Neden TON yerine GRAM yazıyor?</summary><p>Toncoin'in adı Gram oldu ve Binance bu çiftleri GRAM olarak listeliyor. Beacon da aynı adı kullanır. Cüzdan ağı hâlâ TON ağı olarak anılır.</p></details>
+    <details><summary>Yayıncı olmak için ne gerekir?</summary><p>Bir Telegram topluluğu yönetmek ve kurallara uymak: al/sat çağrısı, hedef fiyat, garanti kazanç ve ücretli sinyal grubu tanıtımı yapılmaz. Başvurunuz incelenir.</p></details>
+    <details><summary>Hangi bilgilerimi saklıyorsunuz?</summary><p>Telegram kimliğiniz, kullanıcı adınız ve uygulamadaki etkinliğiniz (beğeni, takip, izlenen reklam). Ayrıntılar için <a href="legal.html#gizlilik">gizlilik sayfasına</a> bakın.</p></details>
+  </div>
+</section>
+</main>
+
+<footer class="dark"><div class="wrap">
+  <div class="cols">
+    <div><b style="color:var(--foam);font-family:var(--display);font-size:18px">Beacon</b><p style="margin-top:6px">Kripto analiz terminali ve topluluk.</p></div>
+    <div><a href="legal.html#risk">Risk uyarısı</a><a href="legal.html#gizlilik">Gizlilik</a><a href="legal.html#sartlar">Kullanım koşulları</a><a data-tg href="https://t.me/BeaconCrypto_Bot">Telegram</a></div>
+  </div>
+  <p class="risk">Beacon bir analiz ve eğitim aracıdır; yatırım danışmanlığı ya da al-sat tavsiyesi değildir. Geçmiş performans gelecekteki sonucu garanti etmez. Kripto varlıklar yüksek risk taşır ve yatırdığınız tutarın tamamını kaybedebilirsiniz.</p>
+</div></footer>
+
+<div class="consent" id="consent" role="dialog" aria-label="Reklam tercihi"><p>Bu site reklam gösterebilir. Reklam sağlayıcıları çerez kullanabilir. Kabul etmezseniz reklam yüklenmez, site aynı şekilde çalışır.</p><div class="row"><button class="btn" id="cOk">Kabul et</button><button class="btn ghost" id="cNo">Reddet</button></div></div>
+
+<script src="../js/config.js"></script>
+<script src="js/config.js"></script>
+<script src="../js/engine.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/market.js"></script>
+<script src="js/site.js"></script>
+<script src="js/ads.js"></script>
+</body>
+</html>
