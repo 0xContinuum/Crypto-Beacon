@@ -52,7 +52,7 @@
   const isPro = () => (srv() ? srvPro() : isOwner() || !!myGrant() || S.proUntil > Date.now());
   const today = () => new Date().toISOString().slice(0, 10);
   const adsUsed = () => (srv() ? (API.me ? API.me.ads.pro_used : 0) : S.ads.d === today() ? S.ads.n : 0);
-  const coinOf = (s) => D.COINS.find((c) => c.s === s) || D.COINS[0];
+  const coinOf = (s) => D.meta(s);
   const allowed = (s) => coinOf(s).free || isPro();
 
   /* ——— küçük yardımcılar ——— */
@@ -245,7 +245,7 @@
   let hzBusy = 0;
   async function loadHorizons(sym, id) {
     const my = ++hzBusy, scores = {};
-    await Promise.all(D.TFS.map(async (tf) => {
+    await Promise.all(D.tfsFor(sym).map(async (tf) => {
       try { const c = await D.load(sym, tf, 40000), r = calc(c, tf); if (r && isNum(r.score)) scores[tf] = r.score; } catch (e) {}
     }));
     if (my !== hzBusy || sym !== S.sym) return;
@@ -262,16 +262,22 @@
   let sortBy = 'def'; const scan = {};
   function heatBg(s) { const k = Math.min(1, Math.abs(s) / 80); return `rgba(${s >= 0 ? '53,214,160' : '255,99,132'},${(0.08 + 0.62 * k).toFixed(2)})`; }
   const LOCK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>';
+  const SCAN_MAX = 20;
+  function scanCoins() {
+    if (scanSrc === 'wl' && isPro()) { const l = wlActive(); return l ? l.items.filter((s) => D.kindOf(s) !== 'index').slice(0, SCAN_MAX).map((s) => D.meta(s)) : []; }
+    return D.COINS.slice();
+  }
   function renderHeat() {
-    const pro = isPro(); let coins = D.COINS.slice();
+    const pro = isPro(); let coins = scanCoins();
+    if (!coins.length) { $('heat').innerHTML = '<p class="note" style="padding:14px var(--gut)">Takip listeniz boş. Sembol seçicide ★ ile parite ekleyin (en çok ' + SCAN_MAX + ' parite taranır).</p>'; return; }
     if (sortBy !== 'def') {
       const key = (c) => { const v = B.horizonScore(scan[c.s] || {}, sortBy); return isNum(v) ? Math.abs(v) : -1; };
       coins.sort((a, b) => key(b) - key(a));
     }
     let h = `<div class="hrow head"><span></span>${D.TFS.map((t) => `<span>${TFL(t)}</span>`).join('')}</div>`;
     for (const c of coins) {
-      const ok = c.free || pro;
-      h += `<div class="hrow"><div class="hname"><div>${c.s}<small>${c.n}</small></div></div>`;
+      const ok = c.free || pro, lbl = c.kind === 'perp' ? c.base + '.P' : c.s;
+      h += `<div class="hrow"><div class="hname"><div>${lbl}<small>${c.n}</small></div></div>`;
       for (const tf of D.TFS) {
         const v = (scan[c.s] || {})[tf];
         if (!ok) h += `<button class="cell lock" data-lock="1" aria-label="${c.s} Pro ile açılır">${LOCK}</button>`;
@@ -287,7 +293,7 @@
   async function buildScan() {
     renderHeat();
     const pro = isPro(), jobs = [];
-    D.COINS.forEach((c) => { if (c.free || pro) D.TFS.forEach((tf) => jobs.push({ sym: c.s, tf })); });
+    scanCoins().forEach((c) => { if (c.free || pro) D.tfsFor(c.s).forEach((tf) => jobs.push({ sym: c.s, tf })); });
     scan.__err = {};
     await D.loadMany(jobs, (j, candles, err) => {
       if (err) { scan.__err[j.sym + j.tf] = 1; rescan(); return; }
@@ -303,6 +309,11 @@
     if (b.dataset.lock) { toast('Bu coin Pro ile açılır'); go('pro'); return; }
     S.sym = b.dataset.s; S.tf = b.dataset.tf; save(); applyState(); go('radar'); loadRadar();
   });
+  $('scanSrc').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-src]'); if (!b) return; haptic();
+    if (b.dataset.src === 'wl' && !isPro()) { toast('Takip listeleri Pro ile açılır'); go('pro'); return; }
+    scanSrc = b.dataset.src; $('scanSrc').querySelectorAll('.chip').forEach((x) => x.setAttribute('aria-pressed', x === b)); buildScan();
+  });
   $('sortChips').addEventListener('click', (e) => {
     const b = e.target.closest('[data-sort]'); if (!b) return;
     sortBy = b.dataset.sort; haptic();
@@ -314,7 +325,7 @@
   let perfTf = '1h', lastEq = null;
   const EXIT = { SL: 'Stop', BE: 'Girişte', TP2: 'Hedef 2', TIME: 'Süre' };
   async function buildPerf() {
-    const sym = S.sym; $('perfTitle').textContent = `${sym}/USDT · ${TFL(perfTf)} geriye dönük test`;
+    const sym = S.sym; if (!D.tfsFor(sym).includes(perfTf)) perfTf = '1d'; $('perfTitle').textContent = `${D.label(sym)} · ${TFL(perfTf)} geriye dönük test`;
     if (!allowed(sym)) { $('kpis').innerHTML = '<p class="note">Bu coin Pro ile açılır.</p>'; return; }
     $('kpis').innerHTML = '<p class="note">Hesaplanıyor…</p>';
     let candles;
@@ -503,22 +514,65 @@
   document.querySelectorAll('.scrim').forEach((s) => s.addEventListener('click', (e) => { if (e.target === s && s.id !== 'legal') closeSheet(s.id); }));
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelectorAll('.scrim.on').forEach((s) => { if (s.id !== 'legal' || S.legal) closeSheet(s.id); }); });
 
-  $('symBtn').onclick = () => {
-    haptic();
-    $('coinList').innerHTML = D.COINS.map((c) => {
-      const ok = c.free || isPro();
-      return `<button class="crow" data-s="${c.s}"><div><b>${c.s}</b><small>${c.n}</small></div><span class="r">${c.s === S.sym ? '<span style="color:var(--beam)">seçili</span>' : ok ? '' : LOCK + ' Pro'}</span></button>`;
+  /* ——— sembol seçici: Spot / Perpetual / Endeks / Pro takip listeleri ——— */
+  const WL_MAX_LISTS = 5, WL_MAX_ITEMS = 40;
+  const wl = () => { S.wl = S.wl && Array.isArray(S.wl.lists) ? S.wl : { act: 0, lists: [] }; return S.wl; };
+  const wlActive = () => { const w = wl(); return w.lists.find((l) => l.id === w.act) || w.lists[0] || null; };
+  let pk = { tab: 'spot', q: '' };
+  function renderPicker() {
+    const w = wl(), pro = isPro(), act = wlActive();
+    $('pkTabs').querySelectorAll('[data-t]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.t === pk.tab));
+    const lc = $('pkLists'); lc.hidden = pk.tab !== 'wl' || !pro;
+    if (!lc.hidden) lc.innerHTML = w.lists.map((l) => `<button class="chip" data-l="${l.id}" aria-pressed="${act && l.id === act.id}">${escH(l.name)} (${l.items.length})</button>`).join('') + (w.lists.length < WL_MAX_LISTS ? '<button class="chip" data-lnew="1">+ Yeni liste</button>' : '') + (act ? '<button class="chip" data-lren="1">Adı değiştir</button><button class="chip" data-ldel="1">Sil</button>' : '');
+    let items;
+    if (pk.tab === 'wl') {
+      if (!pro) { $('coinList').innerHTML = `<div class="pkempty">Takip listeleri Pro ile açılır. İstediğiniz pariteleri listelere ekleyip tek dokunuşla geçersiniz. <button class="chip" data-gopro="1">Pro'yu aç</button></div>`; return; }
+      if (!act) { $('coinList').innerHTML = '<div class="pkempty">Henüz listeniz yok. "Yeni liste" ile başlayın, sonra Spot ya da Perpetual sekmesinde ★ ile parite ekleyin.</div>'; lc.hidden = false; lc.innerHTML = '<button class="chip" data-lnew="1">+ Yeni liste</button>'; return; }
+      const q = pk.q.trim().toLowerCase();
+      items = act.items.map((s) => D.meta(s)).filter((m) => !q || (m.s + ' ' + m.n).toLowerCase().includes(q));
+      if (!items.length) { $('coinList').innerHTML = '<div class="pkempty">Bu listede parite yok. Spot, Perpetual ya da Endeks sekmesinde ★ ile ekleyin.</div>'; return; }
+    } else items = D.list(pk.tab, pk.q);
+    if (!items.length) { $('coinList').innerHTML = '<div class="pkempty">Eşleşen parite bulunamadı.</div>'; return; }
+    const inList = new Set(act ? act.items : []);
+    $('coinList').innerHTML = items.map((c) => {
+      const ok = c.free || pro, nm = c.kind === 'index' ? c.n : c.kind === 'perp' ? c.n + ' · sürekli vadeli' : c.n;
+      return `<div class="crow2"><button class="crow" data-s="${c.s}"><div><b>${c.kind === 'index' ? D.label(c.s) : c.kind === 'perp' ? c.base + '.P' : c.s}</b><small>${escH(nm)}</small></div><span class="r">${c.s === S.sym ? '<span style="color:var(--beam)">seçili</span>' : ok ? '' : LOCK + ' Pro'}</span></button><button class="star" data-star="${c.s}" aria-pressed="${inList.has(c.s)}" aria-label="${inList.has(c.s) ? 'Listeden çıkar' : 'Listeye ekle'}">${inList.has(c.s) ? '★' : '☆'}</button></div>`;
     }).join('');
-    openSheet('symSheet');
+  }
+  $('symBtn').onclick = () => {
+    haptic(); pk.q = ''; $('pkQ').value = ''; renderPicker(); openSheet('symSheet');
+    if (!D.catalog.ready) D.loadCatalog().then(() => { if ($('symSheet').classList.contains('on')) renderPicker(); }).catch(() => {});
   };
-  $('coinList').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-s]'); if (!b) return;
-    closeSheet('symSheet'); haptic();
-    if (!allowed(b.dataset.s)) { toast('Bu coin Pro ile açılır'); go('pro'); return; }
-    if (b.dataset.s === S.sym) return;
-    S.sym = b.dataset.s; save(); applyState(); $('price').dataset.v = ''; $('price').textContent = '–'; $('chg').textContent = '–';
+  $('pkQ').addEventListener('input', () => { pk.q = $('pkQ').value; renderPicker(); });
+  $('pkTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-t]'); if (!b) return; pk.tab = b.dataset.t; haptic(); renderPicker(); });
+  const newId = () => Date.now() + Math.floor(Math.random() * 1000);
+  $('pkLists').addEventListener('click', (e) => {
+    const w = wl(), b = e.target.closest('button'); if (!b || !isPro()) return; haptic();
+    if (b.dataset.l) { w.act = +b.dataset.l; save(); renderPicker(); }
+    else if (b.dataset.lnew) { if (w.lists.length >= WL_MAX_LISTS) return toast(`En çok ${WL_MAX_LISTS} liste`); const n = (prompt('Liste adı', 'Listem ' + (w.lists.length + 1)) || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 20); if (!n) return; const l = { id: newId(), name: n, items: [] }; w.lists.push(l); w.act = l.id; save(); renderPicker(); }
+    else if (b.dataset.lren) { const l = wlActive(); if (!l) return; const n = (prompt('Yeni ad', l.name) || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 20); if (n) { l.name = n; save(); renderPicker(); } }
+    else if (b.dataset.ldel) { const l = wlActive(); if (l && confirm(`"${l.name}" listesi silinsin mi?`)) { w.lists = w.lists.filter((x) => x.id !== l.id); w.act = w.lists[0] ? w.lists[0].id : 0; save(); renderPicker(); } }
+  });
+  function starToggle(sym) {
+    if (!isPro()) { toast('Takip listeleri Pro ile açılır'); closeSheet('symSheet'); go('pro'); return; }
+    const w = wl(); let l = wlActive();
+    if (!l) { l = { id: newId(), name: 'Listem', items: [] }; w.lists.push(l); w.act = l.id; }
+    const k = l.items.indexOf(sym);
+    if (k >= 0) l.items.splice(k, 1); else { if (l.items.length >= WL_MAX_ITEMS) return toast(`Listeye en çok ${WL_MAX_ITEMS} parite eklenebilir`); l.items.push(sym); toast(`${l.name} listesine eklendi`); }
+    save(); renderPicker();
+  }
+  function selectSym(sym) {
+    if (!allowed(sym)) { toast('Bu parite Pro ile açılır'); go('pro'); return; }
+    if (sym === S.sym) return;
+    S.sym = sym; save(); applyState(); $('price').dataset.v = ''; $('price').textContent = '–'; $('chg').textContent = '–';
     if (view === 'perf') buildPerf(); else if (view !== 'radar') go('radar');
     loadRadar();
+  }
+  $('coinList').addEventListener('click', (e) => {
+    const st = e.target.closest('[data-star]'); if (st) { haptic(); starToggle(st.dataset.star); return; }
+    if (e.target.closest('[data-gopro]')) { closeSheet('symSheet'); go('pro'); return; }
+    const b = e.target.closest('[data-s]'); if (!b) return;
+    closeSheet('symSheet'); haptic(); selectSym(b.dataset.s);
   });
   $('legalBtn').onclick = () => openSheet('legal');
   $('legalOk').onclick = () => { S.legal = true; save(); closeSheet('legal'); haptic('ok'); };
@@ -564,7 +618,9 @@
   $('hzLong').onclick = () => { haptic(); setTf('1d'); window.scrollTo({ top: 0, behavior: REDUCED ? 'auto' : 'smooth' }); };
 
   function applyState() {
-    $('symName').textContent = S.sym;
+    { const m = D.meta(S.sym), ok = D.tfsFor(S.sym); if (!ok.includes(S.tf)) { S.tf = '1d'; save(); }
+      $('symName').textContent = m.kind === 'index' ? D.label(S.sym) : m.base; $('symName').nextElementSibling.textContent = m.kind === 'perp' ? '/USDT.P' : m.kind === 'index' ? '' : '/USDT';
+      $('tfSeg').querySelectorAll('[data-tf]').forEach((b) => { b.disabled = !ok.includes(b.dataset.tf); }); }
     $('tfSeg').querySelectorAll('[data-tf]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tf === S.tf));
     $('layers').querySelectorAll('[data-l]').forEach((b) => b.setAttribute('aria-pressed', !!S.layers[b.dataset.l]));
     chart.setLayers(S.layers);
@@ -688,7 +744,7 @@
     toast('Bu cihazda doğrudan paylaşım yok: önce İndir, sonra paylaşın');
   };
   $('shCopy').onclick = async () => { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': shareBlob })]); toast('Görsel kopyalandı'); } catch (e) { toast('Kopyalanamadı: İndir\'i kullanın'); } };
-  $('shareBtn').onclick = () => { haptic(); const cv = $('cv'); if (!cv) return; shareImage(cv, S.sym + '/USDT · ' + TFL(S.tf), 'Skor ' + $('score').textContent + ' · ' + $('verd').textContent + ' · ' + $('price').textContent, 'beacon-' + S.sym + '-' + S.tf); };
+  $('shareBtn').onclick = () => { haptic(); const cv = $('cv'); if (!cv) return; shareImage(cv, D.label(S.sym) + ' · ' + TFL(S.tf), 'Skor ' + $('score').textContent + ' · ' + $('verd').textContent + ' · ' + $('price').textContent, 'beacon-' + S.sym + '-' + S.tf); };
 
   window.__beacon = { save, fxRender, shareImage, setFs, applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
 })();

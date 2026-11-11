@@ -33,6 +33,8 @@ services:
         sync: false
       - key: WEBHOOK_SECRET   # kendi seçtiğiniz rastgele metin
         sync: false
+      - key: COINGECKO_KEY    # isteğe bağlı: CoinGecko ücretsiz "Demo" anahtarı (endeks verisi için hız sınırını rahatlatır)
+        sync: false
       - key: APP_URL          # statik sitenin adresi
         value: https://crypto-beacon.onrender.com
       - key: PUBLIC_URL       # bu API'nin adresi

@@ -18,6 +18,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
 from . import core as C
+from . import mkt as M
 from .db import DB
 
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -199,6 +200,17 @@ def create_app(S=None, db=None):
     @route("/healthz", public=True)
     def healthz(ctx):
         return {"ok": True}
+
+    market = M.Market(db, get=S.market_get or M.http_get, gap=S.market_gap)
+    if S.market_auto and not S.dev_mode:
+        market.start()
+
+    @route("/api/index/{name}", public=True)
+    def index_series(ctx):
+        name = ctx.request.path_params["name"].upper()
+        if name not in M.NAMES:
+            raise ApiError(404, "Bilinmeyen endeks")
+        return JSONResponse(market.get_index(name), headers={"Cache-Control": "public, max-age=300"})
 
     @route("/api/public/feed", public=True)
     def public_feed(ctx):
@@ -802,7 +814,7 @@ def create_app(S=None, db=None):
 
     origins = [u for u in (S.app_url, S.site_url) if u] or ["*"]
     app = Starlette(routes=routes, middleware=[Middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["x-init-data", "content-type"])])
-    app.state.db, app.state.settings = db, S
+    app.state.db, app.state.settings, app.state.market = db, S, market
     if S.bot_token and S.public_url and not S.dev_mode and not S.tg:
         threading.Thread(target=lambda: tg("setWebhook", {"url": S.public_url + "/tg/webhook", "secret_token": S.webhook_secret or None, "allowed_updates": ["message", "callback_query"]}), daemon=True).start()
     return app

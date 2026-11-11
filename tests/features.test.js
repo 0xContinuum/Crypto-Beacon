@@ -51,8 +51,33 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await pg.click('#fxBtn'); await pg.click('#fxNew'); await sleep(300);
     ok(await pg.locator('#fxEdit').isHidden() && await pg.evaluate(() => document.getElementById('v-pro').classList.contains('on')), 'Pro değilken gösterge yazmak Pro sayfasına yönlendirir');
 
+    await pg.click('#dock [data-v="radar"]'); await sleep(200); await pg.click('#symBtn'); await sleep(200);
+    ok(await pg.locator('#coinList .crow:has(svg)').count() > 50, 'Pro olmayan için ücretli pariteler kilitli görünür');
+    await pg.locator('#coinList [data-star="BTC"]').click(); await sleep(300);
+    ok(await pg.evaluate(() => document.getElementById('v-pro').classList.contains('on')) && !(await pg.evaluate(() => (window.__beacon.state().wl || { lists: [] }).lists.length)), 'Pro olmayan ★ ile Pro sayfasına yönlenir, liste oluşmaz');
     // Pro kazan (demo reklam)
     await pg.click('#dock [data-v="pro"]'); await pg.click('#adBtn'); await pg.waitForFunction(() => window.__beacon.isPro(), null, { timeout: 6000 });
+    // Faz 2: seçici, arama, perpetual, takip listesi
+    await pg.click('#dock [data-v="radar"]'); await sleep(300);
+    await pg.click('#symBtn'); await sleep(300);
+    ok(await pg.locator('#coinList .crow').count() >= 90, 'seçici ilk 100 spot paritesini listeler');
+    await pg.fill('#pkQ', 'solana'); await sleep(150);
+    ok(await pg.locator('#coinList .crow').first().textContent().then((t) => /SOL/.test(t)), 'isimle arama (solana → SOL)');
+    await pg.fill('#pkQ', ''); await pg.click('#pkTabs [data-t="perp"]'); await sleep(150);
+    ok(/BTC\.P/.test(await pg.locator('#coinList .crow').first().textContent()), 'Perpetual sekmesi .P pariteleri gösterir');
+    await pg.click('#pkTabs [data-t="index"]'); await sleep(150);
+    ok(await pg.locator('#coinList .crow').count() === 5, 'Endeks sekmesi 5 endeks gösterir');
+    await pg.click('#pkTabs [data-t="perp"]'); await pg.fill('#pkQ', 'eth'); await sleep(150);
+    await pg.locator('#coinList [data-star="ETH.P"]').click(); await pg.fill('#pkQ', ''); await pg.click('#pkTabs [data-t="spot"]'); await pg.fill('#pkQ', 'link'); await sleep(100);
+    await pg.locator('#coinList [data-star="LINK"]').click(); await sleep(100);
+    ok(await pg.evaluate(() => { const w = window.__beacon.state().wl; return w && w.lists.length === 1 && w.lists[0].items.join() === 'ETH.P,LINK'; }), 'Pro: ★ ile takip listesi oluşur ve pariteler eklenir');
+    await pg.fill('#pkQ', ''); await pg.click('#pkTabs [data-t="wl"]'); await sleep(150);
+    ok(await pg.locator('#coinList .crow').count() === 2, 'Listelerim sekmesi yalnızca listedekileri gösterir');
+    await pg.screenshot({ path: path.join(SHOTS, 'secici-mobil.png') });
+    await pg.locator('#coinList [data-s="ETH.P"]').click(); await sleep(900);
+    ok(await pg.evaluate(() => window.__beacon.state().sym === 'ETH.P') && (await pg.textContent('#symName')) === 'ETH' && /USDT\.P/.test(await pg.locator('#symBtn small').textContent()), 'perpetual seçilince grafik ve başlık güncellenir');
+    ok(!(await pg.locator('#coinList').isVisible()), 'seçim sonrası seçici kapanır');
+    await pg.evaluate(() => { const S = window.__beacon.state(); S.sym = 'BTC'; S.wl = null; window.__beacon.save(); });
     // Pine çevirici
     await pg.click('#dock [data-v="radar"]'); await sleep(300);
     await pg.click('#fxBtn'); await pg.click('#pineBtn'); await sleep(300);

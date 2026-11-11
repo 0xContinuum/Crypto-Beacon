@@ -379,3 +379,15 @@ body.fsmode { overflow: hidden; }
 .pinerep details { margin-top: 4px; } .pinerep summary { cursor: pointer; color: var(--beam); font-weight: 600; min-height: 32px; display: flex; align-items: center; }
 .pinerep li { margin: 3px 0; }
 @media (min-width: 900px) { #pineSheet .panel { max-width: min(1120px, 94vw); } .pinecols { grid-template-columns: 1fr 1fr; } }
+
+/* sembol seçici */
+.pickpanel input[type=search] { width: 100%; min-height: 44px; margin: 4px 0 8px; }
+.pktabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }
+#coinList { max-height: 56vh; overflow-y: auto; overscroll-behavior: contain; }
+.crow2 { display: flex; align-items: center; border-bottom: 1px solid var(--grid); }
+.crow2 .crow { border-bottom: 0; flex: 1; min-width: 0; } .crow2 .crow div { min-width: 0; } .crow2 .crow small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.star { flex: none; width: 44px; height: 44px; font-size: 20px; color: var(--fog); } .star[aria-pressed="true"] { color: var(--beam); }
+.pkempty { padding: 18px 4px; color: var(--fog); font-size: 13.5px; }
+.seg button:disabled { opacity: .3; cursor: not-allowed; }
+.pickpanel input[type=search], .pinecols textarea { border-radius: 10px; border: 1px solid var(--rule); background: var(--abyss); color: var(--foam); padding: 10px 12px; font-family: inherit; }
+.pinecols textarea { font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; }

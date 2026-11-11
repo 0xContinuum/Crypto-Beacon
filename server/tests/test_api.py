@@ -85,6 +85,13 @@ class Api(unittest.TestCase):
         self.webhook({"callback_query": {"id": "4", "data": "lg:" + c3["code"], "from": {"id": 5551}, "message": {"chat": {"id": 5551}, "message_id": 8}}})
         r3 = self.ok("GET", f"/api/auth/code/{c3['code']}"); self.assertEqual(r3["user"]["id"], 5551)
 
+    def test_index(self):
+        d = self.ok("GET", "/api/index/btcd"); self.assertEqual((d["name"], d["ready"]), ("BTCD", False))
+        self.err(404, "GET", "/api/index/FOO")
+        mk = self.app.state.market
+        mk._save({"BTCD": [[1, 50, 51, 49, 51, 0]]}, 3)
+        d = self.ok("GET", "/api/index/BTCD"); self.assertTrue(d["ready"]); self.assertEqual(d["rows"][0][4], 51)
+
     def test_video(self):
         self.ok("POST", "/api/admin/broadcasters", uid=ADMIN, body={"user_id": 1005, "display_name": "Video Yayıncı", "auto_approve": True})
         self.err(422, "POST", "/api/b/posts", uid=1005, body={**self.POST, "video": "https://evil.example/watch?v=dQw4w9WgXcQ"})

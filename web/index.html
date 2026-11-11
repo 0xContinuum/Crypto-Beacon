@@ -110,6 +110,7 @@
 
     <!-- TARAYICI -->
     <section id="v-scan" class="view" aria-label="Tarayıcı">
+      <div class="chips" id="scanSrc" role="group" aria-label="Kapsam"><button class="chip" data-src="def" aria-pressed="true">Öne çıkanlar</button><button class="chip" data-src="wl" aria-pressed="false">★ Takip listem</button></div>
       <div class="chips" id="sortChips" role="group" aria-label="Sıralama">
         <button class="chip" data-sort="def" aria-pressed="true">Varsayılan</button>
         <button class="chip" data-sort="short" aria-pressed="false">Kısa vade</button>
@@ -212,7 +213,11 @@
     <button data-v="pro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>Pro</button>
   </div></nav>
 
-  <div class="scrim" id="symSheet" role="dialog" aria-modal="true" aria-label="Coin seç"><div class="panel"><div class="grab"></div><h3>Coin seç</h3><div id="coinList"></div></div></div>
+  <div class="scrim" id="symSheet" role="dialog" aria-modal="true" aria-label="Sembol seç"><div class="panel pickpanel"><div class="grab"></div><h3>Sembol seç</h3>
+    <input id="pkQ" type="search" placeholder="İsim ya da sembol ara (ör. sol, solana, pepe)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Sembol ara">
+    <div class="pktabs" id="pkTabs" role="tablist"><button class="chip" data-t="spot" aria-pressed="true">Spot</button><button class="chip" data-t="perp" aria-pressed="false">Perpetual</button><button class="chip" data-t="index" aria-pressed="false">Endeks</button><button class="chip" data-t="wl" aria-pressed="false">★ Listelerim</button></div>
+    <div id="pkLists" class="pktabs" hidden></div>
+    <div id="coinList"></div></div></div>
 
   <div class="scrim" id="formSheet" role="dialog" aria-modal="true" aria-label="Formasyon ayarları"><div class="panel">
     <div class="grab"></div><h3>Formasyon ayarları</h3>

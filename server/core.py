@@ -40,6 +40,9 @@ class Settings:
     auto_hide_reports: int = 3
     clock: object = time.time
     tg: object = None          # test için: callable(method, payload)
+    market_get: object = None  # test için: callable(url) -> json (CoinGecko yerine)
+    market_gap: float = 2.5    # CoinGecko istekleri arası bekleme (sn)
+    market_auto: bool = True   # arka planda endeksleri yenile
 
     @staticmethod
     def from_env():

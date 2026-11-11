@@ -11,11 +11,14 @@
   function fmtPrice(p) {
     if (!Number.isFinite(p)) return '–';
     const a = Math.abs(p);
+    if (a >= 1e12) return (p / 1e12).toLocaleString('tr-TR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' T';
+    if (a >= 1e9) return (p / 1e9).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' Mr';
     const d = a >= 1000 ? 2 : a >= 100 ? 2 : a >= 10 ? 3 : a >= 1 ? 4 : a >= 0.1 ? 5 : 6;
     return p.toLocaleString('tr-TR', { minimumFractionDigits: d, maximumFractionDigits: d });
   }
 
   function fmtAxis(p, step) {
+    if (Math.abs(p) >= 1e12 || step >= 1e9) return Math.abs(p) >= 1e12 ? (p / 1e12).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' T' : (p / 1e9).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' Mr';
     const d = Math.max(0, Math.min(8, Math.ceil(-Math.log10(step) - 1e-9)));
     return p.toLocaleString('tr-TR', { minimumFractionDigits: d, maximumFractionDigits: d });
   }

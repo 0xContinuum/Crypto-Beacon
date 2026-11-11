@@ -110,3 +110,9 @@ Göstergelerim → "Pine Script'ten çevir". Kural tabanlıdır, sunucu ve maliy
 - Çevrilmeyenler (yorum olarak kalır, nedeni raporlanır): strategy, request.security, kendi fonksiyonlar, for/while, diziler, tablo/çizgi/kutu, bgcolor/barcolor/fill, alert. Bunlar Aşama 2 kapsamındadır.
 - Pro olmayanlar mevcut "reklam izle → 1 saat Pro" ile kullanır.
 - Test: `node tests/pine.test.js` (tests/fixtures/pine altındaki gerçek kodlarla).
+
+## Faz 2: semboller, perpetual, endeksler, takip listeleri
+- **Semboller:** ilk 100 coin (statik sıra, açılışta canlı Binance listesiyle süzülür), perpetual için `BTC.P` biçimi (Binance fapi), endeksler `$TOTAL`, `$TOTAL2`, `$TOTAL3`, `$BTCD`, `$USDTD`. Seçicide isim ya da sembolle arama; aramada ilk 100 dışındaki tüm Binance USDT pariteleri de bulunur.
+- **Endeksler:** sunucu CoinGecko'dan ilk 100 coinin 1 yıllık günlük piyasa değerini çekip hesaplar (`server/mkt.py`), veritabanında saklar, 12 saatte bir yeniler. Yalnızca günlük/haftalık. İlk kurulumda hazır olması birkaç dakika sürer. Değerler ilk 100 toplamıdır, TradingView'daki gerçek TOTAL/dominanstan birkaç puan farklı çıkabilir. Hız sınırı için isteğe bağlı `COINGECKO_KEY`.
+- **Pro:** takip listeleri (en çok 5 liste, her biri 40 parite) ve tarayıcıda "Takip listem" kapsamı (en çok 20 parite). Ücretsiz: BTC, ETH, SOL, BTC.P, TOTAL, BTC.D.
+- Test: `node tests/faz2.test.js`, `python -m unittest server.tests.test_mkt`.
