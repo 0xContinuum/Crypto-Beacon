@@ -85,6 +85,16 @@ class Api(unittest.TestCase):
         self.webhook({"callback_query": {"id": "4", "data": "lg:" + c3["code"], "from": {"id": 5551}, "message": {"chat": {"id": 5551}, "message_id": 8}}})
         r3 = self.ok("GET", f"/api/auth/code/{c3['code']}"); self.assertEqual(r3["user"]["id"], 5551)
 
+    def test_photo(self):
+        SENT.clear()
+        self.err(401, "POST", "/api/me/photo", body={"image": PNG})
+        self.ok("POST", "/api/me/photo", uid=U1, body={"image": PNG, "caption": "BTC 1G"})
+        m, pl = SENT[-1]; self.assertEqual((m, pl["chat_id"], pl["caption"]), ("sendPhoto", U1, "BTC 1G")); self.assertTrue(pl["photo"].startswith(b"\x89PNG"))
+        self.err(400, "POST", "/api/me/photo", uid=U1, body={"image": "data:image/jpeg;base64,/9j/4AAQ"})
+        self.err(400, "POST", "/api/me/photo", uid=U1, body={"image": "x"})
+        for _ in range(5): self.ok("POST", "/api/me/photo", uid=U1, body={"image": PNG})
+        self.err(429, "POST", "/api/me/photo", uid=U1, body={"image": PNG})
+
     def test_index(self):
         d = self.ok("GET", "/api/index/btcd"); self.assertEqual((d["name"], d["ready"]), ("BTCD", False))
         self.err(404, "GET", "/api/index/FOO")

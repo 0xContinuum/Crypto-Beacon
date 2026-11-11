@@ -2,7 +2,7 @@
 const assert = require('assert');
 global.self = global; global.Beacon = require('../web/js/engine.js');
 const store = {}; global.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } };
-global.BEACON_CONFIG = { apiUrl: 'https://api.test' };
+global.BEACON_CONFIG = { apiUrl: 'https://api.test', indexes: true };
 require('../web/js/data.js'); const D = global.BeaconData, B = global.Beacon;
 let pass = 0; const ok = (c, m) => { assert(c, 'BAŞARISIZ: ' + m); pass++; console.log('PASS ' + m); };
 const urls = [];
@@ -53,5 +53,7 @@ global.fetch = async (url) => {
 
   /* motor, hacmi olmayan endeks mumlarıyla çalışır */
   const a = B.analyze(d), sc = a.score[a.score.length - 1]; ok(Number.isFinite(sc) && Math.abs(sc) <= 100, 'skor motoru endeks verisinde sonlu skor üretir (' + Math.round(sc) + ')');
+  const off = require('child_process').spawnSync(process.execPath, ['-e', "global.self=global;global.BEACON_CONFIG={};require('./web/js/data.js');process.stdout.write(String(global.BeaconData.list('index').length))"], { cwd: require('path').join(__dirname, '..') }).stdout.toString();
+  ok(off === '0', 'endeksler varsayılan olarak kapalıdır (config.indexes ile açılır)');
   console.log(`\nTÜM FAZ 2 VERİ TESTLERİ GEÇTİ (${pass})`);
 })().catch((e) => { console.error(e); process.exit(1); });

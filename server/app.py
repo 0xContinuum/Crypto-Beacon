@@ -70,6 +70,26 @@ def create_app(S=None, db=None):
         except Exception:
             return None
 
+    def tg_photo(chat_id, raw, caption=""):
+        """Görseli bot sohbetine gönderir (multipart). Telegram içinde indirme/paylaşma bu yolla yapılır."""
+        if os.environ.get("TG_OFFLINE") == "1":
+            return None
+        if S.tg:
+            return S.tg("sendPhoto", {"chat_id": chat_id, "caption": caption, "photo": raw})
+        if not S.bot_token:
+            return None
+        b = "----beacon" + secrets.token_hex(8)
+        parts = []
+        for k, v in (("chat_id", str(chat_id)), ("caption", caption)):
+            parts.append(f'--{b}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
+        parts.append(f'--{b}\r\nContent-Disposition: form-data; name="photo"; filename="beacon.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + raw + b"\r\n")
+        parts.append(f"--{b}--\r\n".encode())
+        try:
+            req = urllib.request.Request(f"https://api.telegram.org/bot{S.bot_token}/sendPhoto", data=b"".join(parts), headers={"Content-Type": "multipart/form-data; boundary=" + b})
+            return json.loads(urllib.request.urlopen(req, timeout=20).read())
+        except Exception:
+            return None
+
     def notify(uid, text):
         threading.Thread(target=lambda: tg("sendMessage", {"chat_id": uid, "text": text}), daemon=True).start()
 
@@ -269,6 +289,23 @@ def create_app(S=None, db=None):
         except C.AuthError as e:
             raise ApiError(401, f"Giriş doğrulanamadı: {e}")
         return {"token": C.make_web_token(user, S.bot_token, now()), "user": user}
+
+    @route("/api/me/photo", methods=("POST",))
+    def me_photo(ctx):
+        """Telegram içinden: grafik görselini kullanıcının bot sohbetine gönderir (indirme/iletme için)."""
+        uid = ctx.user["id"]
+        rate(uid, "photo", 8, 3600)
+        try:
+            mime, raw = C.valid_image(str(ctx.body.get("image", "")), max_bytes=2_500_000)
+        except ValueError as e:
+            raise ApiError(400, str(e))
+        if mime != "image/png":
+            raise ApiError(400, "Yalnızca PNG")
+        cap = C.clean(str(ctx.body.get("caption", "")), 200)
+        r = tg_photo(uid, raw, cap)
+        if S.tg is None and not (r and r.get("ok")):
+            raise ApiError(502, "Görsel gönderilemedi. Önce bota /start yazın, sonra tekrar deneyin.")
+        return {"ok": True}
 
     @route("/api/me")
     def me(ctx):

@@ -20,6 +20,7 @@
     { s: '$TOTAL', n: 'TOTAL · Toplam piyasa değeri (ilk 100)', free: true }, { s: '$TOTAL2', n: 'TOTAL2 · BTC hariç' }, { s: '$TOTAL3', n: 'TOTAL3 · BTC ve ETH hariç' },
     { s: '$BTCD', n: 'BTC.D · Bitcoin dominansı %', free: true }, { s: '$USDTD', n: 'USDT.D · Tether dominansı %' },
   ];
+  const INDEX_ON = !!(root.BEACON_CONFIG && root.BEACON_CONFIG.indexes); // şimdilik kapalı: veri kaynağı belirlenince açılır
   const FREE = new Set(['BTC', 'ETH', 'SOL', 'BTC.P']);
   const cat = { ready: false, live: false, spot: new Set(), perp: new Set() }; // canlı Binance USDT pariteleri (taban adları)
   const kindOf = (s) => (s[0] === '$' ? 'index' : s.endsWith('.P') ? 'perp' : 'spot');
@@ -38,7 +39,7 @@
   /** Seçicideki liste: tür = 'spot' | 'perp' | 'index'. Boş sorguda ilk 100; sorguda tüm canlı pariteler de aranır. */
   function list(kind, q) {
     q = (q || '').trim().toLowerCase();
-    if (kind === 'index') return INDEXES.filter((i) => !q || (i.s + ' ' + i.n).toLowerCase().includes(q)).map((i) => meta(i.s));
+    if (kind === 'index') return !INDEX_ON ? [] : INDEXES.filter((i) => !q || (i.s + ' ' + i.n).toLowerCase().includes(q)).map((i) => meta(i.s));
     const live = kind === 'perp' ? cat.perp : cat.spot, sfx = kind === 'perp' ? '.P' : '';
     const have = (b) => !cat.live || live.has(b);
     let base = TOP.filter((c) => have(c.s));
@@ -195,5 +196,5 @@
     return candles[n - 1].t + tfMs > now ? n - 1 : n;
   }
 
-  root.BeaconData = { COINS, TOP, INDEXES, meta, label, list, tfsFor, kindOf, loadCatalog, catalog: cat, weekly, TFS, load, loadLong, refresh, loadMany, closedCount, _cache: cache };
+  root.BeaconData = { indexesOn: () => INDEX_ON, COINS, TOP, INDEXES, meta, label, list, tfsFor, kindOf, loadCatalog, catalog: cat, weekly, TFS, load, loadLong, refresh, loadMany, closedCount, _cache: cache };
 })(typeof self !== 'undefined' ? self : this);

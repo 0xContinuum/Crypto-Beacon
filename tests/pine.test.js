@@ -40,8 +40,19 @@ ok(run.filter((q) => q.pane === 'price').length === 3 && run.filter((q) => q.pan
 const tr = run.find((q) => /Upper/.test(q.label)); ok(tr.values.some(Number.isNaN) && tr.values.some(Number.isFinite), 'Trend Signals: koşullu bant yalnızca trend -1 iken çizilir');
 ok(!r.code.includes('table') && r.skipped > 30, 'Trend Signals: tablo/uyarı satırları atlanır');
 
-/* TPL Pro ve Formasyon: dürüstçe çevrilemez, ama çökmez */
-for (const n of ['Beacon_TPL_Pro', 'Formasyon']) { r = P.convert(fx(n)); ok(!r.drawable && r.warnings.length > 0 && r.skipped > 20, n + ': çevrilemeyen kod uyarıyla bildirilir'); }
+/* TPL Pro (Aşama 2): kendi fonksiyonlar açılır, string seçenek sabiti çözülür; döngüsel durum (cooldown) kısmı atlanır */
+r = P.convert(fx('Beacon_TPL_Pro')); run = S.run(r.code, cs);
+ok(r.drawable && /basis = \(?hma\(/.test(r.code.replace(/\s+/g, ' ')) || /hma\(src, trendLen\)/.test(r.code), 'TPL Pro: f_getMA açılır, "HMA" seçeneği sabit çözülür');
+const tl = run.find((q) => q.label === 'Trend Pressure Line'); ok(!!tl && tl.pane === 'price', 'TPL Pro: ana çizgi çevrilir');
+{ const cl = cs.map((k) => k.c), I = B.indicators, bs = S.run('plot(hma(close, 34))', cs)[0].values, at = I.atr(cs.map((k) => k.h), cs.map((k) => k.l), cl, 14);
+  const raw = cs.map((k, i) => { const sa = at[i] !== 0 ? at[i] : 1e-8, pp = (cl[i] - bs[i]) / sa, bp = (k.c - k.o) / sa, mp = i ? (cl[i] - cl[i - 1]) / sa : NaN; return (pp * 0.5 + bp * 0.3 + mp * 0.2) / 1.0; });
+  const pr = I.ema(raw, 8), line = I.ema(cs.map((_, i) => bs[i] + pr[i] * (at[i] !== 0 ? at[i] : 1e-8)), 7);
+  ok(tl.values.every((v, i) => (Number.isNaN(v) && Number.isNaN(line[i])) || Math.abs(v - line[i]) < 1e-6), 'TPL Pro: Trend Pressure Line elle hesaplananla aynı'); }
+ok(P.groupReport(r.report).some((g) => /lastSignalBar/.test(g.text)), 'TPL Pro: bekleme süresi/durum kalıbı raporlanır');
+r = P.convert(fx('Formasyon')); ok(!r.drawable && r.warnings.length > 0 && r.skipped > 20, 'Formasyon: çevrilemeyen kod uyarıyla bildirilir');
+r = P.convert('//@version=5\nindicator("f")\nf_avg(a, b) =>\n    m = (a + b) / 2\n    m * 2\nx = f_avg(close, open)\nplot(x, "x")\nmode = input.string("EMA", "m", options=["EMA", "SMA"])\ny = mode == "EMA" ? ta.ema(close, 10) : ta.sma(close, 10)\nplot(y, "y")');
+run = S.run(r.code, cs); ok(r.drawable && run.length === 2 && run[0].values.every((v, i) => Math.abs(v - (cs[i].c + cs[i].o)) < 1e-9), 'çok satırlı kendi fonksiyon açılır ve doğru hesaplar');
+ok(run[1].values.every((v, i) => Math.abs(v - S.run('plot(ema(close, 10))', cs)[0].values[i]) < 1e-9 || Number.isNaN(v)) && !/sma\(/.test(r.code), 'sabit string koşulu seçili dalı alır, diğeri çıktıya girmez');
 
 /* güvenlik: sessizce yanlış çeviri yok */
 r = P.convert('//@version=5\nindicator("t")\nx = ta.foo(close, 5)\nplot(ta.sma(close, 20), "ok")'); ok(r.skipped === 1 && /ta\.foo/.test(r.report.find((q) => q.status === 'skip').text) && S.run(r.code, cs).length === 1, 'bilinmeyen işlev atlanır, gerisi çevrilir');

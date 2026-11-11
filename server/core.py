@@ -42,7 +42,7 @@ class Settings:
     tg: object = None          # test için: callable(method, payload)
     market_get: object = None  # test için: callable(url) -> json (CoinGecko yerine)
     market_gap: float = 2.5    # CoinGecko istekleri arası bekleme (sn)
-    market_auto: bool = True   # arka planda endeksleri yenile
+    market_auto: bool = False  # arka planda endeksleri yenile (şimdilik kapalı; MARKET_AUTO=1 ile açılır)
 
     @staticmethod
     def from_env():
@@ -52,7 +52,7 @@ class Settings:
             admin_ids=_ids(e("ADMIN_IDS", "6394985954")) or {6394985954},
             adsgram_secret=e("ADSGRAM_SECRET", ""), adsgram_block_id=e("ADSGRAM_BLOCK_ID", ""),
             webhook_secret=e("WEBHOOK_SECRET", ""), app_url=e("APP_URL", "").rstrip("/"),
-            public_url=e("PUBLIC_URL", "").rstrip("/"), site_url=e("SITE_URL", "").rstrip("/"), dev_mode=e("DEV_MODE", "") == "1")
+            public_url=e("PUBLIC_URL", "").rstrip("/"), site_url=e("SITE_URL", "").rstrip("/"), dev_mode=e("DEV_MODE", "") == "1", market_auto=e("MARKET_AUTO", "") == "1")
 
     def now(self):
         return int(self.clock())

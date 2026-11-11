@@ -540,7 +540,7 @@
     }).join('');
   }
   $('symBtn').onclick = () => {
-    haptic(); pk.q = ''; $('pkQ').value = ''; renderPicker(); openSheet('symSheet');
+    haptic(); pk.q = ''; $('pkTabs').querySelector('[data-t="index"]').hidden = !D.indexesOn(); if (pk.tab === 'index' && !D.indexesOn()) pk.tab = 'spot'; $('pkQ').value = ''; renderPicker(); openSheet('symSheet');
     if (!D.catalog.ready) D.loadCatalog().then(() => { if ($('symSheet').classList.contains('on')) renderPicker(); }).catch(() => {});
   };
   $('pkQ').addEventListener('input', () => { pk.q = $('pkQ').value; renderPicker(); });
@@ -734,10 +734,24 @@
   let shareBlob = null, shareName = 'beacon.png', shareText = '';
   function shareImage(src, title, sub, name) {
     const c = composeImage(src, title, sub); shareName = (name || 'beacon') + '.png'; shareText = title + ' · ' + sub + ' · Beacon t.me/' + BOT;
-    c.toBlob((b) => { shareBlob = b; $('shareImg').src = URL.createObjectURL(b); openSheet('shareSheet'); }, 'image/png');
+    c.toBlob((b) => { shareBlob = b; $('shareImg').src = URL.createObjectURL(b); tgShareUi(); openSheet('shareSheet'); }, 'image/png');
   }
   $('shClose').onclick = () => closeSheet('shareSheet');
-  $('shDl').onclick = () => { if (!shareBlob) return; const a = document.createElement('a'); a.href = URL.createObjectURL(shareBlob); a.download = shareName; document.body.appendChild(a); a.click(); a.remove(); toast('Görsel indirildi'); };
+  /* Telegram içinde indirme, paylaşma ve panoya kopyalama çalışmaz: görsel botun sohbetine gönderilir, oradan kaydedilir ya da iletilir. */
+  const inTg = () => !!(tg && tg.initData);
+  const blobToUrl = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
+  async function sendToChat() {
+    if (!shareBlob) return;
+    if (!(API && API.on)) { toast('Bu özellik için sunucu bağlantısı gerekli'); return; }
+    toast('Görsel gönderiliyor…');
+    try { await API.call('POST', '/api/me/photo', { image: await blobToUrl(shareBlob), caption: shareText.slice(0, 180) }); haptic('ok'); toast('Görsel bot sohbetinize gönderildi: oradan kaydedin ya da iletin'); closeSheet('shareSheet'); }
+    catch (e) { toast(e && e.message ? e.message : 'Gönderilemedi'); }
+  }
+  function tgShareUi() {
+    const tgm = inTg();
+    $('shShare').hidden = tgm; $('shCopy').hidden = tgm; $('shDl').textContent = tgm ? 'Sohbetime gönder' : 'İndir';
+  }
+  $('shDl').onclick = () => { if (inTg()) { sendToChat(); return; } if (!shareBlob) return; const a = document.createElement('a'); a.href = URL.createObjectURL(shareBlob); a.download = shareName; document.body.appendChild(a); a.click(); a.remove(); toast('Görsel indirildi'); };
   $('shShare').onclick = async () => {
     if (!shareBlob) return; const f = new File([shareBlob], shareName, { type: 'image/png' });
     try { if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], text: shareText }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }

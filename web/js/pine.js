@@ -87,7 +87,7 @@
   function convert(source) {
     const rawLines = String(source || '').replace(/\r/g, '').replace(/\t/g, '    ').split('\n');
     const out = [], report = [], warnings = [];
-    const defined = new Map(), bad = new Map(), colors = new Map(), strings = new Map(), badFuncs = new Set(), plotHandles = new Set(), holds = new Map(), defAt = new Map();
+    const funcs = new Map(), scopeStack = [], defined = new Map(), bad = new Map(), colors = new Map(), strings = new Map(), badFuncs = new Set(), plotHandles = new Set(), holds = new Map(), defAt = new Map();
     let title = '', overlay = true, plotCount = 0, markCount = 0, isStrategy = false;
 
     /* mantıksal satırlar: yorumlar atılır, açık parantezli satırlar birleştirilir */
@@ -127,14 +127,35 @@
       if (strings.has(name) || colors.has(name)) skip(`"${name}" metin/renk değişkeni, hesapta kullanılamaz`);
       return skip(`"${name}" tanımlı değil`);
     }
+    /* metin sabitleri: "HMA" == "HMA" gibi karşılaştırmalar ve sabit koşullu ?: önceden çözülür */
+    const strVal = (items) => {
+      if (!items || items.length !== 1) return null; const t = items[0];
+      if (t.k === 'str') return t.v;
+      if (t.k === 'id') { const sc = scopeStack[scopeStack.length - 1]; if (sc && sc.has(t.v)) return sc.get(t.v).str !== undefined ? sc.get(t.v).str : null; if (strings.has(t.v) && strings.get(t.v) != null) return strings.get(t.v); }
+      return null;
+    };
+    function fold(items) {
+      let it = items.slice();
+      for (let i = 1; i < it.length - 1; i++) {
+        const o = it[i]; if (o.k !== 'op' || (o.v !== '==' && o.v !== '!=')) continue;
+        const a = strVal([it[i - 1]]), b = strVal([it[i + 1]]); if (a === null || b === null) continue;
+        it.splice(i - 1, 3, { k: 'id', v: (a === b) === (o.v === '==') ? 'true' : 'false' }); i--;
+      }
+      if (it.length > 2 && it[0].k === 'id' && (it[0].v === 'true' || it[0].v === 'false') && it[1].k === 'op' && it[1].v === '?') {
+        let depth = 0, col = -1; for (let i = 2; i < it.length; i++) { const t = it[i]; if (t.k !== 'op') continue; if (t.v === '?') depth++; else if (t.v === ':') { if (depth === 0) { col = i; break; } depth--; } }
+        if (col > 0) return fold(it[0].v === 'true' ? it.slice(2, col) : it.slice(col + 1));
+      }
+      return it;
+    }
     function render(items, forbid) {
+      items = fold(items);
       let s = '';
       items.forEach((it, i) => {
         const prev = items[i - 1];
         if (it.k === 'num') s += it.v;
         else if (it.k === 'str') skip('metin ifadesi hesapta kullanılamaz');
         else if (it.k === 'hex') skip('renk değeri hesapta kullanılamaz');
-        else if (it.k === 'id') { if (it.v === 'na' || it.v === 'true' || it.v === 'false') s += it.v; else if (it.v === 'and' || it.v === 'or') s += ` ${it.v} `; else if (it.v === 'not') s += 'not '; else s += mapIdent(it.v, forbid); }
+        else if (it.k === 'id') { if (it.v === 'na' || it.v === 'true' || it.v === 'false') s += it.v; else if (it.v === 'and' || it.v === 'or') s += ` ${it.v} `; else if (it.v === 'not') s += 'not '; else { const sc = scopeStack[scopeStack.length - 1]; if (sc && sc.has(it.v)) { const e = sc.get(it.v); if (e.s === undefined) skip('metin değeri hesapta kullanılamaz'); s += e.s; } else s += mapIdent(it.v, forbid); } }
         else if (it.k === 'call') s += renderCall(it, forbid);
         else if (it.k === 'group') s += '(' + render(it.items, forbid) + ')';
         else if (it.k === 'idx') s += '[' + render(it.items, forbid) + ']';
@@ -151,9 +172,31 @@
       });
       return s.replace(/\s+/g, ' ').trim();
     }
+    function inline(n, args, forbid) {
+      const fn = funcs.get(n);
+      if (scopeStack.length >= 6) skip(`${n}(): fonksiyon çağrıları çok iç içe`);
+      if (args.some((a) => a.key)) skip(`${n}() adlandırılmış argümanlarla çağrılamaz`);
+      if (args.length > fn.params.length) skip(`${n}() fazla argüman aldı`);
+      const sc = new Map();
+      fn.params.forEach((pn, k) => {
+        if (!args[k]) skip(`${n}(): "${pn}" argümanı eksik`);
+        const sv = strVal(args[k].val); sc.set(pn, sv !== null ? { str: sv } : { s: '(' + render(args[k].val, forbid) + ')' });
+      });
+      scopeStack.push(sc);
+      try {
+        let out = null;
+        fn.body.forEach((line, k) => {
+          const m = /^([A-Za-z_]\w*)\s*=\s*([^=].*)$/.exec(line), last = k === fn.body.length - 1;
+          if (!last) { if (!m) skip(`${n}() gövdesinde desteklenmeyen satır`); const it = build(tokenize(m[2])), sv = strVal(it); sc.set(m[1], sv !== null ? { str: sv } : { s: '(' + render(it, forbid) + ')' }); }
+          else out = '(' + render(build(tokenize(m ? m[2] : line)), forbid) + ')';
+        });
+        return out;
+      } finally { scopeStack.pop(); }
+    }
     function renderCall(c, forbid) {
       const n = c.name, args = c.args;
-      if (badFuncs.has(n)) skip(`kendi yazdığınız fonksiyon: ${n}() (Aşama 2)`);
+      if (funcs.has(n)) return inline(n, args, forbid);
+      if (badFuncs.has(n)) skip(`kendi yazdığınız fonksiyon: ${n}() çevrilemedi`);
       if (args.some((a) => a.key)) skip(`${n}() adlandırılmış argümanlarla desteklenmiyor`);
       const R = (a) => render(a.val, forbid);
       if (n === 'na') { if (args.length !== 1) skip('na() tek argüman alır'); return `isna(${R(args[0])})`; }
@@ -321,8 +364,13 @@
         if (st.indent > baseIndent) { i++; continue; }
         if (/^(import|library)\b/.test(text)) { note(st, 'info', 'içe aktarma yok sayıldı'); i++; continue; }
         if (/^(export\s+)?(method\s+)?[A-Za-z_]\w*\s*\([^)]*\)\s*=>/.test(text)) {
-          const fn = /^(?:export\s+)?(?:method\s+)?([A-Za-z_]\w*)/.exec(text)[1]; badFuncs.add(fn);
-          const end = blockEnd(i); commentSkip(st, 'kendi fonksiyonunuz (Aşama 2): ' + fn + '()'); for (let k = i + 1; k < end; k++) note(stmts[k], 'skip', 'fonksiyon gövdesi'); i = end; continue;
+          const hm = /^(?:export\s+)?(?:method\s+)?([A-Za-z_]\w*)\s*\(([^)]*)\)\s*=>\s*(.*)$/.exec(text), fn = hm[1], end = blockEnd(i);
+          const params = hm[2].split(',').map((x) => x.trim().replace(/^(?:series\s+|simple\s+|const\s+)?(?:int|float|bool|string|color)\s+/, '')).filter(Boolean);
+          const body = (hm[3] ? [hm[3]] : []).concat(stmts.slice(i + 1, end).map((b) => b.text));
+          if (!body.length || params.some((x) => !/^[A-Za-z_]\w*$/.test(x))) { badFuncs.add(fn); commentSkip(st, 'fonksiyon tanımı okunamadı'); }
+          else { funcs.set(fn, { params, body }); note(st, 'info', `fonksiyon ${fn}() çağrıldığı yerde açılır`); }
+          for (let k = i + 1; k < end; k++) note(stmts[k], 'info', 'fonksiyon gövdesi');
+          i = end; continue;
         }
         if (/^(if|for|while|switch|else)\b/.test(text)) { i = processBlock(i, forbidAll); continue; }
         text = text.replace(/^(var|varip)\s+/, (m0, k0) => { st.isVar = true; return ''; });

@@ -106,8 +106,8 @@ Inter yazı tipi SIL OFL 1.1 (`web/fonts/OFL-NOTICE.txt`). Kod sizindir.
 
 ## Pine çevirici (Pro)
 Göstergelerim → "Pine Script'ten çevir". Kural tabanlıdır, sunucu ve maliyet gerektirmez; `web/js/pine.js`.
-- Çevrilenler: input.* (sabite), ta.* göstergeleri, math.*, `x[1]`, `var` + `:=` durum kalıpları (`hold()`), plot/plotshape/plotchar ve `if` içindeki `label.new` (grafikte `mark()` işareti), `[a,b,c] = ta.macd/ta.bb`.
-- Çevrilmeyenler (yorum olarak kalır, nedeni raporlanır): strategy, request.security, kendi fonksiyonlar, for/while, diziler, tablo/çizgi/kutu, bgcolor/barcolor/fill, alert. Bunlar Aşama 2 kapsamındadır.
+- Çevrilenler: input.* (sabite), ta.* göstergeleri, math.*, `x[1]`, `var` + `:=` durum kalıpları (`hold()`), plot/plotshape/plotchar ve `if` içindeki `label.new` (grafikte `mark()` işareti), `[a,b,c] = ta.macd/ta.bb`, kendi yazdığınız fonksiyonlar (çağrıldığı yerde açılır) ve sabit metin seçenekleri (`input.string` varsayılanı).
+- Çevrilmeyenler (yorum olarak kalır, nedeni raporlanır): strategy, request.security, for/while, diziler, tablo/çizgi/kutu, bgcolor/barcolor/fill, alert. Bunlar Aşama 2 kapsamındadır.
 - Pro olmayanlar mevcut "reklam izle → 1 saat Pro" ile kullanır.
 - Test: `node tests/pine.test.js` (tests/fixtures/pine altındaki gerçek kodlarla).
 
@@ -116,3 +116,9 @@ Göstergelerim → "Pine Script'ten çevir". Kural tabanlıdır, sunucu ve maliy
 - **Endeksler:** sunucu CoinGecko'dan ilk 100 coinin 1 yıllık günlük piyasa değerini çekip hesaplar (`server/mkt.py`), veritabanında saklar, 12 saatte bir yeniler. Yalnızca günlük/haftalık. İlk kurulumda hazır olması birkaç dakika sürer. Değerler ilk 100 toplamıdır, TradingView'daki gerçek TOTAL/dominanstan birkaç puan farklı çıkabilir. Hız sınırı için isteğe bağlı `COINGECKO_KEY`.
 - **Pro:** takip listeleri (en çok 5 liste, her biri 40 parite) ve tarayıcıda "Takip listem" kapsamı (en çok 20 parite). Ücretsiz: BTC, ETH, SOL, BTC.P, TOTAL, BTC.D.
 - Test: `node tests/faz2.test.js`, `python -m unittest server.tests.test_mkt`.
+
+## Telegram içinde görsel
+Telegram'ın web görünümü indirme, paylaşma ve panoya kopyalamayı engellediği için "Sohbetime gönder" kullanılır: sunucu (`POST /api/me/photo`) görseli botun kullanıcıyla sohbetine yollar, oradan kaydedilir ya da iletilir. Kullanıcının bota bir kez /start yazmış olması gerekir. Saatte 8 görsel sınırı vardır.
+
+## Endeksler (kapalı)
+TOTAL/BTC.D/USDT.D kodu hazır ama kapalıdır. Açmak için `config.local.js` içinde `indexes: true` ve sunucuda `MARKET_AUTO=1`. Veri kaynağı kararı verilene kadar kapalı kalmalıdır.
