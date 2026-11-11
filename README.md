@@ -103,3 +103,10 @@ Sunucuda zaman damgalı ileri-dönük sinyal kaydı (en güçlü güven kanıtı
 
 ## Lisans
 Inter yazı tipi SIL OFL 1.1 (`web/fonts/OFL-NOTICE.txt`). Kod sizindir.
+
+## Pine çevirici (Pro)
+Göstergelerim → "Pine Script'ten çevir". Kural tabanlıdır, sunucu ve maliyet gerektirmez; `web/js/pine.js`.
+- Çevrilenler: input.* (sabite), ta.* göstergeleri, math.*, `x[1]`, `var` + `:=` durum kalıpları (`hold()`), plot/plotshape/plotchar ve `if` içindeki `label.new` (grafikte `mark()` işareti), `[a,b,c] = ta.macd/ta.bb`.
+- Çevrilmeyenler (yorum olarak kalır, nedeni raporlanır): strategy, request.security, kendi fonksiyonlar, for/while, diziler, tablo/çizgi/kutu, bgcolor/barcolor/fill, alert. Bunlar Aşama 2 kapsamındadır.
+- Pro olmayanlar mevcut "reklam izle → 1 saat Pro" ile kullanır.
+- Test: `node tests/pine.test.js` (tests/fixtures/pine altındaki gerçek kodlarla).

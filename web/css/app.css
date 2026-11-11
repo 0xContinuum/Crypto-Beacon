@@ -369,3 +369,13 @@ body.fsmode { overflow: hidden; }
 
 .chip.login { background: var(--beam); color: #1a1204; border-color: var(--beam); font-weight: 700; }
 .vcode { font: 700 44px/1 var(--display); letter-spacing: .18em; text-align: center; padding: 18px 0; margin: 8px 0 4px; border: 1px dashed var(--rule); border-radius: 14px; color: var(--beam); }
+
+/* Pine çevirici */
+.pinecols { display: grid; gap: 10px; grid-template-columns: 1fr; margin: 8px 0; }
+.pinecols textarea { width: 100%; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; min-height: 200px; }
+.pinebtns { display: flex; gap: 8px; flex-wrap: wrap; } .pinebtns .cta { flex: 1 1 140px; margin: 0; }
+.pinerep { margin-top: 10px; font-size: 13px; color: var(--mist); }
+.pinerep .sum { color: var(--foam); font-weight: 600; margin-bottom: 6px; } .pinerep .warn { color: var(--bear); margin: 4px 0; }
+.pinerep details { margin-top: 4px; } .pinerep summary { cursor: pointer; color: var(--beam); font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+.pinerep li { margin: 3px 0; }
+@media (min-width: 900px) { #pineSheet .panel { max-width: min(1120px, 94vw); } .pinecols { grid-template-columns: 1fr 1fr; } }

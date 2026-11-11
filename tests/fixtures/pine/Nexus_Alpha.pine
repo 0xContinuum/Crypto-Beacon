@@ -1,0 +1,48 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © AlperA2259
+
+//@version=5
+indicator("Al Uçsun - Sat Dibe Vursun (Nexus Alpha)", overlay=true, max_labels_count=500)
+
+// --- Girdiler ---
+length = input.int(20, "Sıkışma Periyodu")
+mult = input.float(2.0, "Bollinger Katsayısı")
+volThreshold = input.float(1.5, "Hacim Patlama Eşiği", minval=1.0)
+
+// --- 1. Bollinger & Keltner (Sıkışma Analizi) ---
+basis = ta.sma(close, length)
+dev = mult * ta.stdev(close, length)
+upperBB = basis + dev
+lowerBB = basis - dev
+
+ma = ta.sma(close, length)
+range_1 = high - low
+rangema = ta.sma(range_1, length)
+upperKC = ma + rangema * 1.5
+lowerKC = ma - rangema * 1.5
+
+sqzOn  = (lowerBB > lowerKC) and (upperBB < upperKC) // Sıkışma Var
+sqzOff = (lowerBB < lowerKC) and (upperBB > upperKC) // Sıkışma Patladı
+
+// --- 2. Likidite ve İğne Analizi (Pin Bar) - HATALI KISIM DÜZELTİLDİ ---
+isBullishPin = (close > open) and (low < ta.lowest(low, 10)[1]) and (math.abs(open - low) > math.abs(open - close) * 2)
+isBearishPin = (close < open) and (high > ta.highest(high, 10)[1]) and (math.abs(high - open) > math.abs(open - close) * 2)
+
+// --- 3. Hacim Onayı ---
+volaConfirm = volume > ta.sma(volume, length) * volThreshold
+
+// --- SİNYAL MANTIĞI ---
+buySignal = sqzOff and isBullishPin and volaConfirm
+sellSignal = sqzOff and isBearishPin and volaConfirm
+
+// --- Görselleştirme (Slogan Uygunluğu) ---
+plotshape(buySignal, title="UÇUŞ BAŞLADI", style=shape.labelup, location=location.belowbar, color=color.new(#00ff08, 0), size=size.normal, text="UÇUŞ 🚀", textcolor=color.white)
+plotshape(sellSignal, title="DİBE VURUŞ", style=shape.labeldown, location=location.abovebar, color=color.new(#ff0000, 0), size=size.normal, text="KAÇ 💀", textcolor=color.white)
+
+// Mum Renklendirme
+barcolor(buySignal ? color.lime : sellSignal ? color.red : na)
+
+// Trend Kanalları
+p1 = plot(upperBB, color=color.new(color.aqua, 80), title="Üst Bant")
+p2 = plot(lowerBB, color=color.new(color.aqua, 80), title="Alt Bant")
+fill(p1, p2, color=sqzOn ? color.new(color.orange, 90) : color.new(color.blue, 95))

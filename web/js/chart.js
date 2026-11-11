@@ -299,6 +299,25 @@
         }
       }
 
+      /* kullanıcı göstergelerinin işaretleri (mark): aynı mumda birden çok işaret üst üste dizilir */
+      {
+        const stack = new Map(); c.font = `700 10px ${col.font}`; c.textAlign = 'center';
+        for (const m of cu) {
+          if (m.pane !== 'mark' || !m.on) continue;
+          for (let i = i0; i <= i1; i++) {
+            if (!m.on[i]) continue;
+            const key = i + (m.dir === 'up' ? 'u' : 'd'), lvl = stack.get(key) || 0; stack.set(key, lvl + 1);
+            const xx = this.x(i), k = cs[i], s = Math.max(4, Math.min(7, this.barW * 0.7)), off = 8 + lvl * (m.text ? 24 : 14);
+            const yy = m.dir === 'up' ? y(k.l) + off + s : y(k.h) - off - s;
+            c.fillStyle = m.color; c.beginPath();
+            if (m.dir === 'up') { c.moveTo(xx, yy - s); c.lineTo(xx - s, yy + s * 0.7); c.lineTo(xx + s, yy + s * 0.7); }
+            else { c.moveTo(xx, yy + s); c.lineTo(xx - s, yy - s * 0.7); c.lineTo(xx + s, yy - s * 0.7); }
+            c.closePath(); c.fill();
+            if (m.text && this.barW >= 4) { c.textBaseline = m.dir === 'up' ? 'top' : 'bottom'; c.fillText(m.text, xx, m.dir === 'up' ? yy + s + 2 : yy - s - 2); }
+          }
+        }
+      }
+
       /* son fiyat çizgisi */
       const lastK = cs[cs.length - 1], ly = y(lastK.c), up = lastK.c >= lastK.o, lcol = up ? col.bull : col.bear;
       c.strokeStyle = lcol; c.globalAlpha = 0.55; c.setLineDash([2, 4]); c.beginPath(); c.moveTo(0, Math.round(ly) + 0.5); c.lineTo(pw, Math.round(ly) + 0.5); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;

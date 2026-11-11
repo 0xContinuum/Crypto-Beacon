@@ -595,7 +595,7 @@
     if (!SC || !isPro() || !Array.isArray(S.custom)) return [];
     const out = [];
     for (const f of S.custom) { if (!f.on) continue; try { for (const p of SC.run(f.code, candles)) out.push(p); } catch (e) { f.err = e.message; } }
-    return out.slice(0, 10);
+    return out.slice(0, 16);
   }
   function applyCustom() { if (!cur || !cur.data) return; cur.data.custom = customPlots(cur.candles); chart.setData(cur.data); }
   let fxEditing = null;
@@ -690,5 +690,5 @@
   $('shCopy').onclick = async () => { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': shareBlob })]); toast('Görsel kopyalandı'); } catch (e) { toast('Kopyalanamadı: İndir\'i kullanın'); } };
   $('shareBtn').onclick = () => { haptic(); const cv = $('cv'); if (!cv) return; shareImage(cv, S.sym + '/USDT · ' + TFL(S.tf), 'Skor ' + $('score').textContent + ' · ' + $('verd').textContent + ' · ' + $('price').textContent, 'beacon-' + S.sym + '-' + S.tf); };
 
-  window.__beacon = { shareImage, setFs, applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
+  window.__beacon = { save, fxRender, shareImage, setFs, applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
 })();

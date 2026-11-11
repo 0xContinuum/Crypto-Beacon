@@ -225,6 +225,20 @@
     <button class="cta" id="formOk">Tamam</button>
   </div></div>
 
+
+  <div class="scrim" id="pineSheet" role="dialog" aria-modal="true" aria-label="Pine Script çevirici"><div class="panel pinepanel">
+    <div class="grab"></div><h3>Pine Script çevirici <span class="pill">Pro</span></h3>
+    <p class="note">TradingView Pine kodunu soldaki alana yapıştırın, sağda Beacon diline çevrilmiş halini alın. Çeviri cihazınızda yapılır; kod hiçbir yere gönderilmez.</p>
+    <div class="pinecols">
+      <div><label class="note" for="pineIn">Pine kodu</label><textarea id="pineIn" rows="14" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="//@version=5&#10;indicator(&quot;Örnek&quot;, overlay=true)&#10;plot(ta.sma(close, 20))"></textarea></div>
+      <div><label class="note" for="pineOut">Beacon çıktısı</label><textarea id="pineOut" rows="14" spellcheck="false" readonly></textarea></div>
+    </div>
+    <div class="pinebtns"><button class="cta" id="pineGo">Çevir</button><button class="cta ghost" id="pineCopy" disabled>Kopyala</button><button class="cta ghost" id="pineAdd" disabled>Göstergelerime ekle</button></div>
+    <div id="pineRep" class="pinerep" hidden></div>
+    <p class="note" style="margin-top:12px">Yalnızca kendi yazdığınız ya da açık kaynak lisanslı kodu yapıştırın. Çıktıyı TradingView ile karşılaştırın; ilk mumlarda küçük farklar olabilir. Strateji emirleri, başka zaman dilimi verisi, etiket/tablo nesneleri ve kendi fonksiyonlarınız şimdilik çevrilmez; bu satırlar yorum olarak kalır ve nedeni raporda yazar.</p>
+    <button class="cta ghost" id="pineClose" style="margin-top:8px">Kapat</button>
+  </div></div>
+
   <div class="scrim" id="fxSheet" role="dialog" aria-modal="true" aria-label="Göstergelerim"><div class="panel">
     <div class="grab"></div><h3>Göstergelerim <span class="pill">Pro</span></h3>
     <p class="note" id="fxIntro">Kendi formülünüzü yazın, grafiğe ekleyin. Formüller cihazınızda çalışır ve geleceğe bakmaz.</p>
@@ -236,14 +250,15 @@
       <div id="fxErr" class="fxerr" role="alert" hidden></div>
       <details class="fxhelp"><summary>Yazım rehberi</summary>
         <p><b>Veri:</b> open, high, low, close, volume, hl2, hlc3, ohlc4, tr</p>
-        <p><b>İşlevler:</b> sma, ema, rma, rsi, atr, stdev, sum, highest, lowest, shift, change, abs, sqrt, log, max, min, crossover, crossunder</p>
+        <p><b>İşlevler:</b> sma, ema, rma, wma, hma, vwma, alma, rsi, cci, mfi, stoch, macd, macdsig, macdhist, bbmid, bbup, bblo, atr, stdev, sum, highest, lowest, shift, change, abs, sqrt, log, floor, ceil, round, nz, isna, max, min, crossover, crossunder, barssince, hold</p><p><b>Geçmiş:</b> <code>close[1]</code> bir mum önceki değer. <b>Durum:</b> <code>hold(0, kosul1, 1, kosul2, -1)</code> koşul gerçekleşince değeri tutar.</p>
         <p><b>İşleçler:</b> + − * / % ^ &lt; &gt; &lt;= &gt;= == != and or not, koşul: a ? b : c</p>
-        <p><b>Çizim:</b> <code>plot(ifade, "Ad", "#renk")</code> fiyatın üstüne, <code>pane(...)</code> alt panele. Her satır <code>ad = ifade</code> ya da plot/pane olmalı. Yorum: <code>//</code></p>
+        <p><b>Çizim:</b> <code>plot(ifade, "Ad", "#renk")</code> fiyatın üstüne, <code>pane(...)</code> alt panele, <code>mark(koşul, "up", "yazı", "#renk")</code> grafiğe ok/etiket. Her satır <code>ad = ifade</code> ya da plot/pane olmalı. Yorum: <code>//</code></p>
       </details>
       <button class="cta" id="fxSave">Kaydet ve ekle</button>
       <button class="cta ghost" id="fxCancel" style="margin-top:8px">Vazgeç</button>
     </div>
     <button class="cta" id="fxNew">Yeni gösterge</button>
+    <button class="cta ghost" id="pineBtn" style="margin-top:8px">Pine Script'ten çevir</button>
     <p class="note" style="margin-top:12px">Gösterge, grafiğin geçmiş mumlarıyla hesaplanır; sonuç yatırım tavsiyesi değildir.</p>
   </div></div>
 
@@ -284,11 +299,13 @@
 <script src="js/data.js"></script>
 <script src="js/formation.js"></script>
 <script src="js/script.js"></script>
+<script src="js/pine.js"></script>
 <script src="js/market.js"></script>
 <script src="js/chart.js"></script>
 <script src="js/app.js"></script>
 <script src="js/market-ui.js"></script>
 <script src="js/community.js"></script>
+<script src="js/pine-ui.js"></script>
 <script src="js/web.js"></script>
 </body>
 </html>

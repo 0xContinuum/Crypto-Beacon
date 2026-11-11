@@ -53,6 +53,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     // Pro kazan (demo reklam)
     await pg.click('#dock [data-v="pro"]'); await pg.click('#adBtn'); await pg.waitForFunction(() => window.__beacon.isPro(), null, { timeout: 6000 });
+    // Pine çevirici
+    await pg.click('#dock [data-v="radar"]'); await sleep(300);
+    await pg.click('#fxBtn'); await pg.click('#pineBtn'); await sleep(300);
+    ok(await pg.locator('#pineSheet').isVisible(), 'Pro ile Pine çevirici açılır');
+    await pg.fill('#pineIn', fs.readFileSync(path.join(__dirname, 'fixtures/pine/Nexus_Alpha.pine'), 'utf8')); await pg.click('#pineGo'); await sleep(300);
+    const pout = await pg.inputValue('#pineOut'); ok(/mark\(buySignal, "up"/.test(pout) && /sqzOn = /.test(pout), 'Pine çıktısı sağ tarafta oluşur');
+    ok(/satır çevrildi/.test(await pg.textContent('#pineRep')) && await pg.locator('#pineCopy').isEnabled(), 'çeviri raporu gösterilir');
+    await pg.screenshot({ path: path.join(SHOTS, 'pine-mobil.png') });
+    await pg.click('#pineAdd'); await sleep(600);
+    ok(await pg.evaluate(() => (window.__beacon.state().custom || []).some((f) => /Uçsun/.test(f.name) && f.on && !f.err)), 'çevrilen gösterge Göstergelerim listesine eklenir');
+    await pg.evaluate(() => { const S = window.__beacon.state(); S.custom = []; window.__beacon.save(); window.__beacon.applyCustom(); });
     await pg.click('#dock [data-v="market"]'); await sleep(800);
     ok(await pg.locator('.mk.locked').count() === 0, 'Pro ile tüm kartlar açılır');
     const vals = await pg.$$eval('.mk .mkv b', (e) => e.map((x) => x.textContent.trim()));

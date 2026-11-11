@@ -1,0 +1,96 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © AlperA2259
+
+//@version=5
+indicator("Gelişmiş Formasyon Merkezi V2 [AlperA]", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ==========================================
+// --- AYARLAR VE GİRDİLER ---
+// ==========================================
+grp_1 = "Genel Ayarlar"
+pivot_period = input.int(10, "Pivot Hassasiyeti", minval=2, group=grp_1)
+price_diff_perc = input.float(1.5, "Yataylık Toleransı (%)", minval=0.1, step=0.1, group=grp_1, tooltip="Düz çizgilerin (üçgen tabanı gibi) ne kadar esnek olacağını belirler.")
+
+grp_2 = "Formasyon Seçimi"
+show_tri     = input.bool(true, "Tüm Üçgen Tipleri Aktif", group=grp_2)
+show_wedge   = input.bool(true, "Takozlar (Wedges) Aktif", group=grp_2)
+show_double  = input.bool(true, "İkili Dip / Tepe Aktif", group=grp_2)
+
+// --- Değişkenler ---
+var string last_p_name = "Aranıyor..."
+var float last_p_target = 0.0
+var string last_p_status = "Veri Bekleniyor"
+var color last_p_color = color.gray
+
+// Pivot tespiti
+ph = ta.pivothigh(high, pivot_period, pivot_period)
+pl = ta.pivotlow(low, pivot_period, pivot_period)
+
+// Pivot Saklama
+var float[] ph_p = array.new_float(0)
+var int[] ph_b = array.new_int(0)
+var float[] pl_p = array.new_float(0)
+var int[] pl_b = array.new_int(0)
+
+if not na(ph)
+    array.unshift(ph_p, ph), array.unshift(ph_b, bar_index[pivot_period])
+if not na(pl)
+    array.unshift(pl_p, pl), array.unshift(pl_b, bar_index[pivot_period])
+
+// Temizlik fonksiyonu (Eski çizgileri temizlemek istersen kullanabilirsin)
+// line.delete(id) gibi...
+
+// ==========================================
+// --- ANALİZ MANTIĞI ---
+// ==========================================
+if array.size(ph_p) >= 2 and array.size(pl_p) >= 2
+    ph1 = array.get(ph_p, 1), ph2 = array.get(ph_p, 0)
+    pl1 = array.get(pl_p, 1), pl2 = array.get(pl_p, 0)
+    ph1_b = array.get(ph_b, 1), ph2_b = array.get(ph_b, 0)
+    pl1_b = array.get(pl_b, 1), pl2_b = array.get(pl_b, 0)
+
+    upper_slope = (ph2 - ph1)
+    lower_slope = (pl2 - pl1)
+    is_flat_top = math.abs(ph1 - ph2) / ph1 * 100 <= price_diff_perc
+    is_flat_bottom = math.abs(pl1 - pl2) / pl1 * 100 <= price_diff_perc
+
+    // --- 1. ÜÇGENLER ---
+    if show_tri
+        if is_flat_top and pl2 > pl1 // Yükselen Üçgen
+            last_p_name := "Yükselen Üçgen", last_p_color := color.green
+            line.new(ph1_b, ph1, bar_index, ph1, color=color.green, width=2)
+            line.new(pl1_b, pl1, pl2_b, pl2, color=color.green, width=2, extend=extend.right)
+            
+        else if is_flat_bottom and ph2 < ph1 // Alçalan Üçgen
+            last_p_name := "Alçalan Üçgen", last_p_color := color.red
+            line.new(pl1_b, pl1, bar_index, pl1, color=color.red, width=2)
+            line.new(ph1_b, ph1, ph2_b, ph2, color=color.red, width=2, extend=extend.right)
+
+        else if ph2 < ph1 and pl2 > pl1 // Simetrik Üçgen
+            last_p_name := "Simetrik Üçgen", last_p_color := color.orange
+            line.new(ph1_b, ph1, ph2_b, ph2, color=color.orange, width=2, extend=extend.right)
+            line.new(pl1_b, pl1, pl2_b, pl2, color=color.orange, width=2, extend=extend.right)
+
+    // --- 2. TAKOZLAR (WEDGES) ---
+    if show_wedge
+        // Alçalan Takoz: İkisi de düşüyor ama alt çizgi daha yavaş düşüyor (daralıyor)
+        if ph2 < ph1 and pl2 < pl1 and math.abs(upper_slope) > math.abs(lower_slope)
+            last_p_name := "Alçalan Takoz (Pozitif)", last_p_color := color.lime
+            line.new(ph1_b, ph1, ph2_b, ph2, color=color.lime, width=2, extend=extend.right)
+            line.new(pl1_b, pl1, pl2_b, pl2, color=color.lime, width=2, extend=extend.right)
+
+        // Yükselen Takoz: İkisi de yükseliyor ama alt çizgi daha hızlı yükseliyor (daralıyor)
+        else if ph2 > ph1 and pl2 > pl1 and lower_slope > upper_slope
+            last_p_name := "Yükselen Takoz (Negatif)", last_p_color := color.maroon
+            line.new(ph1_b, ph1, ph2_b, ph2, color=color.maroon, width=2, extend=extend.right)
+            line.new(pl1_b, pl1, pl2_b, pl2, color=color.maroon, width=2, extend=extend.right)
+
+// ==========================================
+// --- TABLO GÜNCELLEME ---
+// ==========================================
+if barstate.islast
+    var table mainTable = table.new(position.bottom_right, 2, 2, bgcolor=color.new(color.black, 70), border_width=1)
+    table.cell(mainTable, 0, 0, "Formasyon:", text_color=color.white)
+    table.cell(mainTable, 1, 0, last_p_name, text_color=last_p_color)
+    table.cell(mainTable, 0, 1, "Durum:", text_color=color.white)
+    table.cell(mainTable, 1, 1, "Takipte", text_color=color.aqua)
