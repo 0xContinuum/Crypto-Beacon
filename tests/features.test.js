@@ -82,7 +82,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await pg.click('#fxBtn'); await pg.click('#pineBtn'); await sleep(300);
     ok(await pg.locator('#pineSheet').isVisible(), 'Pro ile Pine çevirici açılır');
     await pg.fill('#pineIn', fs.readFileSync(path.join(__dirname, 'fixtures/pine/Nexus_Alpha.pine'), 'utf8')); await pg.click('#pineGo'); await sleep(300);
-    const pout = await pg.inputValue('#pineOut'); ok(/mark\(buySignal, "up"/.test(pout) && /sqzOn = /.test(pout), 'Pine çıktısı sağ tarafta oluşur');
+    const pout = await pg.inputValue('#pineOut'); ok(/^\/\/@beacon2/.test(pout) && /sqzOn/.test(pout), 'Pine çıktısı sağ tarafta oluşur');
     ok(/satır çevrildi/.test(await pg.textContent('#pineRep')) && await pg.locator('#pineCopy').isEnabled(), 'çeviri raporu gösterilir');
     await pg.screenshot({ path: path.join(SHOTS, 'pine-mobil.png') });
     await pg.click('#pineAdd'); await sleep(600);

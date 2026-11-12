@@ -122,3 +122,16 @@ Telegram'ın web görünümü indirme, paylaşma ve panoya kopyalamayı engelled
 
 ## Endeksler (kapalı)
 TOTAL/BTC.D/USDT.D kodu hazır ama kapalıdır. Açmak için `config.local.js` içinde `indexes: true` ve sunucuda `MARKET_AUTO=1`. Veri kaynağı kararı verilene kadar kapalı kalmalıdır.
+
+## API'yi Vercel'de çalıştırma (Render yerine ya da yanında)
+1. Bu klasörü GitHub'a koyun (kökte `vercel.json`, `api/index.py`, `requirements.txt`, `server/` olmalı). Vercel'de **Add New → Project**, repoyu seçin, Framework "Other", Root Directory = repo kökü.
+2. Environment Variables: Render'dakilerin aynısı (`DATABASE_URL` Neon bağlantısı, `BOT_TOKEN`, `ADMIN_IDS`, `ADSGRAM_SECRET`, `WEBHOOK_SECRET`, `APP_URL`, `SITE_URL`) ve `PUBLIC_URL` = Vercel adresiniz (https://....vercel.app). `DEV_MODE` koymayın.
+3. Telegram webhook'u Vercel'de otomatik kaydedilmez; bir kez tarayıcıdan ya da terminalden çalıştırın:
+   `https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<VERCEL_ADRESI>/tg/webhook&secret_token=<WEBHOOK_SECRET>&allowed_updates=["message","callback_query"]`
+4. Statik sitede `config.local.js` içindeki `apiUrl` değerini Vercel adresiyle değiştirin. Adsgram Reward URL'sini de yeni adrese çevirin: `<VERCEL_ADRESI>/api/adsgram/reward?userid=[userId]&secret=<ADSGRAM_SECRET>`.
+5. Sınırlar: sunucusuz ortam, ilk istek (soğuk başlangıç) 1-3 sn sürebilir; istek sınırlayıcı (`rate`) bellekte tutulduğundan örnekler arasında paylaşılmaz (gevşek kalır); arka plan işleri (endeks yenileme) çalışmaz, zaten kapalı.
+
+
+## Formül 2 (Pine'ın tamamına yakınını çalıştıran motor)
+`web/js/script2.js`: mum mum çalışan, `eval` kullanmayan yorumlayıcı. `var`, `:=`, `if/else`, `for`, `while`, kendi fonksiyonlar, diziler/map, `request.security` (aynı sembolün üst zaman dilimi, son tamamlanan mum, yeniden boyama yok), `ta.*`, `math.*`, `str.*`, `color.*`, `plot/plotshape/plotchar/plotarrow/bgcolor/barcolor/hline/fill`, `label/line/box/table`, `strategy.entry` (işarete çevrilir).
+Pine çevirici önce hafif v1'i dener; tam çeviremezse kodu `//@beacon2` başlığıyla Formül 2'ye geçirir. Güvenlik: adım ve süre sınırı (4 sn), 30.000 karakter, nesne sınırı. Desteklenmeyenler: başka sembol verisi, kendi OHLC mumu çizimi, matrix, gerçek strateji backtest'i.

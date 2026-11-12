@@ -650,8 +650,18 @@
   function customPlots(candles) {
     if (!SC || !isPro() || !Array.isArray(S.custom)) return [];
     const out = [];
-    for (const f of S.custom) { if (!f.on) continue; try { for (const p of SC.run(f.code, candles)) out.push(p); } catch (e) { f.err = e.message; } }
-    return out.slice(0, 16);
+    const opts = { tf: cur && cur.tf, symbol: cur ? D.meta(cur.sym).base + 'USDT' : 'BTCUSDT', getCandles: (tf) => (cur && cur.htf && cur.htf[tf]) || null };
+    for (const f of S.custom) {
+      if (!f.on) continue;
+      try { const r = SC.run(f.code, candles, opts); f.err = ''; for (const p of r) out.push(p); }
+      catch (e) { f.err = e.message; if (e.needTf) needHtf(e.needTf); }
+    }
+    return out.slice(0, 24);
+  }
+  const htfBusy = new Set();
+  function needHtf(tf) {
+    if (!cur || !D.tfsFor(cur.sym).includes(tf)) return; const key = cur.sym + '|' + tf; if (htfBusy.has(key)) return; htfBusy.add(key); const my = cur;
+    D.load(cur.sym, tf, 60000).then((c) => { if (cur !== my) return; cur.htf = cur.htf || {}; cur.htf[tf] = c; applyCustom(); }).catch(() => {}).finally(() => htfBusy.delete(key));
   }
   function applyCustom() { if (!cur || !cur.data) return; cur.data.custom = customPlots(cur.candles); chart.setData(cur.data); }
   let fxEditing = null;

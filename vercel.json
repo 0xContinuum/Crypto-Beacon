@@ -1,13 +1,5 @@
 {
-  "functions": {
-    "server/app.py": {
-      "maxDuration": 30
-    }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/server/app.py" },
-    { "source": "/healthz", "destination": "/server/app.py" },
-    { "source": "/tg/(.*)", "destination": "/server/app.py" },
-    { "source": "/((?!api|healthz|tg|css|js|fonts|hakkinda).*)", "destination": "/web/$1" }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "functions": { "api/index.py": { "maxDuration": 30, "includeFiles": "server/**" } }
 }

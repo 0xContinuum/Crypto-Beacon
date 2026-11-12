@@ -99,7 +99,13 @@
     for (let i = p - 1; i < x.length; i++) { let s = 0, ok = true; for (let j = 0; j < p; j++) { const v = x[i - j]; if (!Number.isFinite(v)) { ok = false; break; } s += v * (p - j); } if (ok) o[i] = s / den; }
     return o;
   }
-  function run(src, candles) {
+  const G2 = () => (typeof require === 'function' && typeof module === 'object' ? require('./script2.js') : (typeof window !== 'undefined' ? window.BeaconScript2 : null));
+  const isV2 = (src) => /^\s*\/\/@beacon2/.test(src);
+  function run(src, candles, opts) {
+    if (isV2(src)) { const S2 = G2(); if (!S2) throw new ScriptError('Formül 2 motoru yüklenmedi', 0); return S2.run(src, candles, opts); }
+    return run1(src, candles);
+  }
+  function run1(src, candles) {
     const prog = parse(src), n = candles.length;
     const col = (f) => candles.map(f);
     const env = Object.assign(Object.create(null), {

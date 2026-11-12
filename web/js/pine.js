@@ -84,7 +84,7 @@
   const flat = (items, out = []) => { for (const it of items) { out.push(it); if (it.items) flat(it.items, out); if (it.args) for (const a of it.args) flat(a.val, out); } return out; };
 
   /* ——— çeviri bağlamı ——— */
-  function convert(source) {
+  function convert1(source) {
     const rawLines = String(source || '').replace(/\r/g, '').replace(/\t/g, '    ').split('\n');
     const out = [], report = [], warnings = [];
     const funcs = new Map(), scopeStack = [], defined = new Map(), bad = new Map(), colors = new Map(), strings = new Map(), badFuncs = new Set(), plotHandles = new Set(), holds = new Map(), defAt = new Map();
@@ -449,5 +449,27 @@
     for (const r of report) { if (r.status !== 'skip') continue; const k = r.text; if (!g.has(k)) g.set(k, []); g.get(k).push(r.line); }
     return [...g.entries()].map(([text, lines]) => ({ text, lines })).sort((a, b) => b.lines.length - a.lines.length);
   }
-  return { convert, groupReport };
+  /* v1 (vektörel, hafif) tam çevirirse onu kullan; eksik kalırsa mum mum çalışan Formül 2 motoruna geç */
+  function synth(n, ms) { const c = []; let p = 100; for (let i = 0; i < n; i++) { p += Math.sin(i / 7) * 2 + Math.cos(i / 3); c.push({ t: 1.7e12 + i * ms, o: p - 1, h: p + 2, l: p - 2, c: p + Math.sin(i), v: 100 + (i % 13) }); } return c; }
+  function convert(source) {
+    const r1 = convert1(source);
+    if (r1.ok && r1.skipped === 0 && r1.drawable) return r1;
+    const S2 = typeof require === 'function' && typeof module === 'object' ? require('./script2.js') : (typeof window !== 'undefined' ? window.BeaconScript2 : null);
+    if (!S2) return r1;
+    const code = '//@beacon2\n' + String(source || '');
+    try {
+      const base = synth(500, 36e5), htf = (tf) => synth(200, S2.LIM && 0 || ({ '1d': 864e5, '1w': 6048e5, '4h': 144e5, '2h': 72e5, '1M': 2592e6 }[tf] || 864e5));
+      const res = S2.run(code, base, { tf: '1h', getCandles: htf });
+      const tit = /(?:indicator|strategy|study)\s*\(\s*(?:title\s*=\s*)?"([^"]{1,60})"/.exec(String(source || ''));
+      const drawn = res.length > 0;
+      if (!drawn) return r1;
+      const warnings = (r1.warnings || []).filter((w) => !/Aşama|çevrilemedi/.test(w)).slice();
+      warnings.push('Bu kod Formül 2 motoruyla çalışıyor (durum değişkenleri, döngüler, çizimler dahil).');
+      return { code, title: (tit && tit[1]) || r1.title, report: [], ok: true, skipped: 0, warnings, drawable: true, engine: 2 };
+    } catch (e) {
+      r1.warnings = (r1.warnings || []).concat(['Formül 2 denemesi: ' + (e.message || e) + (e.line ? ' (satır ' + e.line + ')' : '')]);
+      return r1;
+    }
+  }
+  return { convert, convert1, groupReport };
 });

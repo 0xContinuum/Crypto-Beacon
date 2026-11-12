@@ -21,7 +21,7 @@ p = S.run('mark(crossover(close, sma(close, 20)), "up", "AL", "#35d6a0")\nplot(c
 ok(p[0].pane === 'mark' && p[0].on.some((v) => v) && p[0].dir === 'up' && p[0].text === 'AL', 'mark işareti üretilir');
 
 /* Nexus Alpha: neredeyse tamamen çevrilir */
-let r = P.convert(fx('Nexus_Alpha')), run = S.run(r.code, cs);
+let r = P.convert1(fx('Nexus_Alpha')), run = S.run(r.code, cs);
 ok(r.skipped === 2 && r.drawable, 'Nexus Alpha: yalnızca mum rengi ve dolgu atlanır');
 ok(run.filter((q) => q.pane === 'mark').length === 2 && run.filter((q) => q.pane === 'price').length === 2, 'Nexus Alpha: 2 işaret + 2 çizgi');
 // sinyal mantığı elle
@@ -30,18 +30,18 @@ const basis = B.indicators.sma(c, 20), sdv = sd(c, 20), up = run.find((q) => q.l
 ok(up.values.every((v, i) => approx(v, basis[i] + 2 * sdv[i])), 'Nexus Alpha: üst Bollinger bandı elle hesapla aynı');
 
 /* Macro Cycle: haftalık RSI atlanır, kalanı çalışır */
-r = P.convert(fx('Macro_Cycle_Decipherer')); run = S.run(r.code, cs);
+r = P.convert1(fx('Macro_Cycle_Decipherer')); run = S.run(r.code, cs);
 ok(/trendState = hold\(0,/.test(r.code) && run.filter((q) => q.pane === 'mark').length === 2, 'Macro Cycle: var/:= → hold ve 2 etiket');
 ok(P.groupReport(r.report).some((g) => /request\.security/.test(g.text)) && P.groupReport(r.report).some((g) => /önceki mumdaki/.test(g.text)), 'Macro Cycle: request.security ve bekleme süresi kalıbı raporlanır');
 
 /* Trend Signals */
-r = P.convert(fx('Trend_Signals')); run = S.run(r.code, cs);
+r = P.convert1(fx('Trend_Signals')); run = S.run(r.code, cs);
 ok(run.filter((q) => q.pane === 'price').length === 3 && run.filter((q) => q.pane === 'mark').length === 4, 'Trend Signals: 3 çizgi + 4 işaret');
 const tr = run.find((q) => /Upper/.test(q.label)); ok(tr.values.some(Number.isNaN) && tr.values.some(Number.isFinite), 'Trend Signals: koşullu bant yalnızca trend -1 iken çizilir');
 ok(!r.code.includes('table') && r.skipped > 30, 'Trend Signals: tablo/uyarı satırları atlanır');
 
 /* TPL Pro (Aşama 2): kendi fonksiyonlar açılır, string seçenek sabiti çözülür; döngüsel durum (cooldown) kısmı atlanır */
-r = P.convert(fx('Beacon_TPL_Pro')); run = S.run(r.code, cs);
+r = P.convert1(fx('Beacon_TPL_Pro')); run = S.run(r.code, cs);
 ok(r.drawable && /basis = \(?hma\(/.test(r.code.replace(/\s+/g, ' ')) || /hma\(src, trendLen\)/.test(r.code), 'TPL Pro: f_getMA açılır, "HMA" seçeneği sabit çözülür');
 const tl = run.find((q) => q.label === 'Trend Pressure Line'); ok(!!tl && tl.pane === 'price', 'TPL Pro: ana çizgi çevrilir');
 { const cl = cs.map((k) => k.c), I = B.indicators, bs = S.run('plot(hma(close, 34))', cs)[0].values, at = I.atr(cs.map((k) => k.h), cs.map((k) => k.l), cl, 14);
@@ -49,14 +49,27 @@ const tl = run.find((q) => q.label === 'Trend Pressure Line'); ok(!!tl && tl.pan
   const pr = I.ema(raw, 8), line = I.ema(cs.map((_, i) => bs[i] + pr[i] * (at[i] !== 0 ? at[i] : 1e-8)), 7);
   ok(tl.values.every((v, i) => (Number.isNaN(v) && Number.isNaN(line[i])) || Math.abs(v - line[i]) < 1e-6), 'TPL Pro: Trend Pressure Line elle hesaplananla aynı'); }
 ok(P.groupReport(r.report).some((g) => /lastSignalBar/.test(g.text)), 'TPL Pro: bekleme süresi/durum kalıbı raporlanır');
-r = P.convert(fx('Formasyon')); ok(!r.drawable && r.warnings.length > 0 && r.skipped > 20, 'Formasyon: çevrilemeyen kod uyarıyla bildirilir');
-r = P.convert('//@version=5\nindicator("f")\nf_avg(a, b) =>\n    m = (a + b) / 2\n    m * 2\nx = f_avg(close, open)\nplot(x, "x")\nmode = input.string("EMA", "m", options=["EMA", "SMA"])\ny = mode == "EMA" ? ta.ema(close, 10) : ta.sma(close, 10)\nplot(y, "y")');
+r = P.convert1(fx('Formasyon')); ok(!r.drawable && r.warnings.length > 0 && r.skipped > 20, 'Formasyon: çevrilemeyen kod uyarıyla bildirilir');
+r = P.convert1('//@version=5\nindicator("f")\nf_avg(a, b) =>\n    m = (a + b) / 2\n    m * 2\nx = f_avg(close, open)\nplot(x, "x")\nmode = input.string("EMA", "m", options=["EMA", "SMA"])\ny = mode == "EMA" ? ta.ema(close, 10) : ta.sma(close, 10)\nplot(y, "y")');
 run = S.run(r.code, cs); ok(r.drawable && run.length === 2 && run[0].values.every((v, i) => Math.abs(v - (cs[i].c + cs[i].o)) < 1e-9), 'çok satırlı kendi fonksiyon açılır ve doğru hesaplar');
 ok(run[1].values.every((v, i) => Math.abs(v - S.run('plot(ema(close, 10))', cs)[0].values[i]) < 1e-9 || Number.isNaN(v)) && !/sma\(/.test(r.code), 'sabit string koşulu seçili dalı alır, diğeri çıktıya girmez');
 
 /* güvenlik: sessizce yanlış çeviri yok */
-r = P.convert('//@version=5\nindicator("t")\nx = ta.foo(close, 5)\nplot(ta.sma(close, 20), "ok")'); ok(r.skipped === 1 && /ta\.foo/.test(r.report.find((q) => q.status === 'skip').text) && S.run(r.code, cs).length === 1, 'bilinmeyen işlev atlanır, gerisi çevrilir');
-r = P.convert('//@version=5\nindicator("t", overlay=false)\n[m, s, h] = ta.macd(close, 12, 26, 9)\nplot(h, "h")'); run = S.run(r.code, cs); ok(run[0].pane === 'sub' && run[0].values.every((v, i) => approx(v, B.indicators.macd(c).hist[i])), 'overlay=false → pane, ta.macd üçlüsü çevrilir');
-r = P.convert('plot(ta.highest(10), "h")\nplot(not (close > open) ? 1 : 0)'); ok(r.drawable && /highest\(high, 10\)/.test(r.code), 'tek argümanlı highest ve not');
-ok(P.convert('').skipped === 0 && !P.convert('').drawable, 'boş girdi çökmez');
+r = P.convert1('//@version=5\nindicator("t")\nx = ta.foo(close, 5)\nplot(ta.sma(close, 20), "ok")'); ok(r.skipped === 1 && /ta\.foo/.test(r.report.find((q) => q.status === 'skip').text) && S.run(r.code, cs).length === 1, 'bilinmeyen işlev atlanır, gerisi çevrilir');
+r = P.convert1('//@version=5\nindicator("t", overlay=false)\n[m, s, h] = ta.macd(close, 12, 26, 9)\nplot(h, "h")'); run = S.run(r.code, cs); ok(run[0].pane === 'sub' && run[0].values.every((v, i) => approx(v, B.indicators.macd(c).hist[i])), 'overlay=false → pane, ta.macd üçlüsü çevrilir');
+r = P.convert1('plot(ta.highest(10), "h")\nplot(not (close > open) ? 1 : 0)'); ok(r.drawable && /highest\(high, 10\)/.test(r.code), 'tek argümanlı highest ve not');
+ok(P.convert1('').skipped === 0 && !P.convert1('').drawable, 'boş girdi çökmez');
+
+/* ——— Formül 2 (mum mum motor) ——— */
+const S2 = require('../web/js/script2.js');
+const hcs = []; for (let i = 0; i < 40; i++) { const sl = cs.slice(i * 24, i * 24 + 24); if (sl.length < 24) break; hcs.push({ t: sl[0].t, o: sl[0].o, h: Math.max(...sl.map((x) => x.h)), l: Math.min(...sl.map((x) => x.l)), c: sl[23].c, v: 1 }); }
+for (const f of ['Beacon_TPL_Pro', 'Macro_Cycle_Decipherer', 'Nexus_Alpha', 'Trend_Signals', 'Formasyon']) { let e = null, res; try { res = S2.run('//@beacon2\n' + fx(f), cs, { tf: '1h', getCandles: () => hcs }); } catch (x) { e = x; } ok(!e && res.length > 0, `Formül 2: ${f} hatasız çalışır${e ? ' – ' + e.message : ''}`); }
+r = P.convert(fx('Formasyon')); ok(r.engine === 2 && r.drawable && /^\/\/@beacon2/.test(r.code), 'Formasyon artık Formül 2 ile çevrilir');
+r = P.convert(fx('Nexus_Alpha')); ok(r.engine === 2 && r.skipped === 0, 'Nexus tam çevrilir (Formül 2)');
+let q = S2.run('var int cnt = 0\nup = ta.crossover(close, ta.sma(close, 20))\nif up\n    cnt := cnt + 1\nplot(cnt, "c")', cs, { tf: '1h' }); ok(q[0].values[599] > 0 && q[0].values.every((v, i) => i === 0 || v >= q[0].values[i - 1]), 'var + := sayaç artar, geri düşmez');
+q = S2.run('f(x, n) =>\n    s = 0.0\n    for i = 0 to n - 1\n        s += x[i]\n    s / n\nplot(f(close, 5), "a")\nplot(ta.sma(close, 5), "b")', cs, { tf: '1h' }); ok(q[0].values.every((v, i) => (Number.isFinite(v) ? Math.abs(v - q[1].values[i]) < 1e-9 : !Number.isFinite(q[1].values[i]) || i < 5)), 'kullanıcı fonksiyonu + for döngüsü SMA ile aynı sonucu verir');
+let t0 = Date.now(), e2 = null; try { S2.run('while true\n    x = 1\nplot(1)', cs, {}); } catch (x) { e2 = x; } ok(e2 && Date.now() - t0 < 6000, 'sonsuz döngü güvenle durdurulur');
+e2 = null; try { S2.run('plot(close[-1])', cs, {}); } catch (x) { e2 = x; } ok(e2 && /geleceğe/.test(e2.message), 'geleceğe bakış reddedilir');
+q = S2.run('d = request.security(syminfo.tickerid, "1D", close)\nplot(d, "d")', cs, { tf: '1h', getCandles: () => hcs }); const vv = q[0].values.filter(Number.isFinite); ok(vv.length > 400 && q[0].values.every((v, i) => !Number.isFinite(v) || cs[i].t >= hcs[0].t), 'request.security son tamamlanan üst mumu kullanır');
+q = S2.run('if barstate.islast\n    label.new(bar_index, high, "son")\n    line.new(bar_index - 5, low, bar_index, high)\n    box.new(bar_index - 5, high, bar_index, low, bgcolor=color.new(color.red, 80))\nbgcolor(close > open ? color.new(color.green, 85) : na)', cs, { tf: '1h' }); ok(q.some((x) => x.pane === 'draw' && x.draws.labels.length === 1 && x.draws.lines.length === 1 && x.draws.boxes.length === 1) && q.some((x) => x.pane === 'bg'), 'etiket/çizgi/kutu/bgcolor üretilir');
 console.log(`\nTÜM PINE TESTLERİ GEÇTİ (${pass})`);

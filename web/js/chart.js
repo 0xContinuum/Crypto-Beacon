@@ -252,13 +252,38 @@
       };
       if (L.ema) { if (d.ema200) poly(d.ema200, 'rgba(233,238,248,.45)', 1.2, [5, 4]); if (d.ema50) poly(d.ema50, col.beam, 1.5); if (d.ema20) poly(d.ema20, 'rgba(233,238,248,.8)', 1.2); }
 
+      /* Formül 2: arka plan rengi ve iki çizgi arası dolgu */
+      for (const x of cu) {
+        if (x.pane === 'bg' && x.colors) { for (let i = i0; i <= i1; i++) { if (!x.colors[i]) continue; c.fillStyle = x.colors[i]; c.fillRect(this.x(i) - this.barW / 2, 0, this.barW + 0.5, paneBottom); } }
+        else if (x.pane === 'fill' && x.colors) {
+          const A = cu[x.a], Bq = cu[x.b]; if (!A || !Bq || A.pane !== 'price' || Bq.pane !== 'price') continue;
+          for (let i = i0 + 1; i <= i1; i++) { const col2 = x.colors[i]; if (!col2) continue; const a0 = A.values[i - 1], a1 = A.values[i], b0 = Bq.values[i - 1], b1 = Bq.values[i]; if (![a0, a1, b0, b1].every(Number.isFinite)) continue; c.fillStyle = col2; c.beginPath(); c.moveTo(this.x(i - 1), y(a0)); c.lineTo(this.x(i), y(a1)); c.lineTo(this.x(i), y(b1)); c.lineTo(this.x(i - 1), y(b0)); c.closePath(); c.fill(); }
+        }
+      }
       /* kullanıcı göstergeleri (fiyat üstü) */
-      for (const x of ovl) poly(x.values, x.color, 1.6);
+      const plotS = (x, yf, a, b, w0) => {
+        const st = x.style || 'line';
+        if (st === 'hline') { const v = x.values[a]; if (Number.isFinite(v)) { c.strokeStyle = x.color; c.lineWidth = 1; c.setLineDash(x.dash ? [5, 4] : []); c.globalAlpha = 0.8; c.beginPath(); c.moveTo(0, Math.round(yf(v)) + 0.5); c.lineTo(pw, Math.round(yf(v)) + 0.5); c.stroke(); c.setLineDash([]); c.globalAlpha = 1; } return; }
+        if (/^(circles|cross|stepline_diamond)/.test(st) || st === 'circles' || st === 'cross') { for (let i = a; i <= b; i++) { const v = x.values[i]; if (!Number.isFinite(v)) continue; c.fillStyle = (x.colors && x.colors[i]) || x.color; c.beginPath(); c.arc(this.x(i), yf(v), Math.max(1.5, Math.min(3, this.barW * 0.35)), 0, 6.3); c.fill(); } return; }
+        if (st === 'histogram' || st === 'columns') { const z = yf(0); for (let i = a; i <= b; i++) { const v = x.values[i]; if (!Number.isFinite(v)) continue; c.fillStyle = (x.colors && x.colors[i]) || x.color; const yy = yf(v); c.fillRect(this.x(i) - this.barW * 0.35, Math.min(yy, z), this.barW * 0.7, Math.max(1, Math.abs(yy - z))); } return; }
+        const lw = w0 || x.width || 1.6;
+        if (x.colors) { // mum başına renk: aynı renkli parçalar birleştirilir
+          let seg = null;
+          const flush = () => { if (seg) { c.strokeStyle = seg.col; c.lineWidth = lw; c.stroke(); seg = null; } };
+          for (let i = a; i <= b; i++) { const v = x.values[i]; if (!Number.isFinite(v)) { flush(); continue; } const cc = x.colors[i] || x.color, xx = this.x(i), yy = yf(v); if (!seg || seg.col !== cc) { const prev = seg && Number.isFinite(x.values[i - 1]); flush(); c.beginPath(); if (prev || (Number.isFinite(x.values[i - 1]) && i > a)) c.moveTo(this.x(i - 1), yf(x.values[i - 1])), c.lineTo(xx, yy); else c.moveTo(xx, yy); seg = { col: cc }; } else c.lineTo(xx, yy); }
+          flush(); c.lineWidth = 1; return;
+        }
+        poly2(x.values, yf, x.color, lw, a, b);
+      };
+      const poly2 = (arr, yf, color, lw, a, b) => { c.beginPath(); let st = false; for (let i = a; i <= b; i++) { const v = arr[i]; if (!Number.isFinite(v)) { st = false; continue; } const xx = this.x(i), yy = yf(v); if (!st) { c.moveTo(xx, yy); st = true; } else c.lineTo(xx, yy); } c.strokeStyle = color; c.lineWidth = lw; c.stroke(); c.lineWidth = 1; };
+      for (const x of ovl) plotS(x, y, i0, i1);
+      const bcol = cu.filter((x) => x.pane === 'barcolor');
 
       /* mumlar */
       const bw = Math.max(1, Math.floor(this.barW * 0.66));
       for (let i = i0; i <= i1; i++) {
-        const k = cs[i], up = k.c >= k.o, xx = Math.round(this.x(i)), color = up ? col.bull : col.bear;
+        const k = cs[i], up = k.c >= k.o, xx = Math.round(this.x(i)); let color = up ? col.bull : col.bear;
+        for (const bc of bcol) if (bc.colors && bc.colors[i]) color = bc.colors[i];
         c.strokeStyle = color; c.fillStyle = color;
         c.beginPath(); c.moveTo(xx + 0.5, Math.round(y(k.h))); c.lineTo(xx + 0.5, Math.round(y(k.l))); c.stroke();
         const yo = Math.round(y(k.o)), yc = Math.round(y(k.c)), bt = Math.min(yo, yc), bh = Math.max(1, Math.abs(yo - yc));
@@ -309,15 +334,51 @@
           if (m.pane !== 'mark' || !m.on) continue;
           for (let i = i0; i <= i1; i++) {
             if (!m.on[i]) continue;
-            const key = i + (m.dir === 'up' ? 'u' : 'd'), lvl = stack.get(key) || 0; stack.set(key, lvl + 1);
-            const xx = this.x(i), k = cs[i], s = Math.max(4, Math.min(7, this.barW * 0.7)), off = 8 + lvl * (m.text ? 24 : 14);
-            const yy = m.dir === 'up' ? y(k.l) + off + s : y(k.h) - off - s;
-            c.fillStyle = m.color; c.beginPath();
-            if (m.dir === 'up') { c.moveTo(xx, yy - s); c.lineTo(xx - s, yy + s * 0.7); c.lineTo(xx + s, yy + s * 0.7); }
+            const dir = (m.dirs && m.dirs[i]) || m.dir, color = (m.colors && m.colors[i]) || m.color, text = (m.texts && m.texts[i]) || (m.texts ? '' : m.text);
+            const key = i + (dir === 'up' ? 'u' : 'd'), lvl = stack.get(key) || 0; stack.set(key, lvl + 1);
+            const xx = this.x(i), k = cs[i], s = Math.max(4, Math.min(7, this.barW * 0.7)), off = 8 + lvl * (text ? 24 : 14);
+            let yy = dir === 'up' ? y(k.l) + off + s : y(k.h) - off - s;
+            if (m.absolute && m.ys && Number.isFinite(m.ys[i])) yy = y(m.ys[i]);
+            c.fillStyle = color; c.beginPath();
+            if (m.shape === 'dot') c.arc(xx, yy, s * 0.8, 0, 6.3);
+            else if (m.shape === 'char') { /* yalnız metin */ }
+            else if (dir === 'up') { c.moveTo(xx, yy - s); c.lineTo(xx - s, yy + s * 0.7); c.lineTo(xx + s, yy + s * 0.7); }
             else { c.moveTo(xx, yy + s); c.lineTo(xx - s, yy - s * 0.7); c.lineTo(xx + s, yy - s * 0.7); }
             c.closePath(); c.fill();
-            if (m.text && this.barW >= 4) { c.textBaseline = m.dir === 'up' ? 'top' : 'bottom'; c.fillText(m.text, xx, m.dir === 'up' ? yy + s + 2 : yy - s - 2); }
+            if (text && (this.barW >= 4 || m.shape === 'char')) { c.textBaseline = dir === 'up' ? 'top' : 'bottom'; c.fillText(text, xx, dir === 'up' ? yy + s + 2 : yy - s - 2); }
           }
+        }
+      }
+
+      /* Formül 2 çizimleri: çizgi, kutu, etiket, tablo */
+      for (const m of cu) {
+        if (m.pane !== 'draw' || !m.draws) continue;
+        const D2 = m.draws, rightX = (v) => (v > i1 + 200 ? pw : this.x(v));
+        for (const b of D2.boxes) {
+          if (![b.i1, b.i2, b.y1, b.y2].every(Number.isFinite)) continue; const x1 = this.x(b.i1), x2 = b.extend === 'right' || b.extend === 'both' ? pw : this.x(b.i2); if (Math.max(x1, x2) < 0 || Math.min(x1, x2) > pw) continue;
+          const ya = y(b.y1), yb = y(b.y2); if (b.bg) { c.fillStyle = b.bg; c.fillRect(Math.min(x1, x2), Math.min(ya, yb), Math.abs(x2 - x1), Math.abs(yb - ya)); }
+          if (b.border) { c.strokeStyle = b.border; c.lineWidth = 1; c.strokeRect(Math.min(x1, x2) + 0.5, Math.min(ya, yb) + 0.5, Math.abs(x2 - x1), Math.abs(yb - ya)); }
+          if (b.text) { c.fillStyle = b.border || col.foam; c.font = `600 10px ${col.font}`; c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText(b.text, Math.min(x1, x2) + 4, Math.min(ya, yb) + 3); }
+        }
+        for (const l of D2.lines) {
+          if (![l.i1, l.i2, l.y1, l.y2].every(Number.isFinite)) continue; let x1 = this.x(l.i1), x2 = this.x(l.i2), y1 = y(l.y1), y2 = y(l.y2);
+          if (l.extend === 'right' || l.extend === 'both') { const dx = x2 - x1; if (dx) { const sl = (y2 - y1) / dx; x2 = pw + 50; y2 = y1 + sl * (x2 - x1); } else x2 = pw; }
+          if (l.extend === 'left' || l.extend === 'both') { const dx = x2 - x1; if (dx) { const sl = (y2 - y1) / dx; y1 = y1 + sl * (-50 - x1); x1 = -50; } }
+          c.strokeStyle = l.color || col.beam; c.lineWidth = Math.min(4, Math.max(1, l.width)); c.setLineDash(/dash/.test(l.style) ? [6, 4] : /dott/.test(l.style) ? [2, 3] : []); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); c.setLineDash([]); c.lineWidth = 1;
+        }
+        c.font = `600 10px ${col.font}`;
+        for (const lb of D2.labels) {
+          if (!Number.isFinite(lb.i) || !Number.isFinite(lb.y)) continue; const xx = this.x(lb.i), k = cs[Math.max(0, Math.min(cs.length - 1, Math.round(lb.i)))];
+          const up2 = /up|diamond|triangleup/.test(lb.style) && !/down/.test(lb.style), yy0 = lb.yloc === 'abovebar' ? y(k.h) - 8 : lb.yloc === 'belowbar' ? y(k.l) + 8 : y(lb.y);
+          const txt = (lb.text || '').split('\n')[0].slice(0, 28), tw = c.measureText(txt).width + 10; if (xx < -tw || xx > pw + tw) continue;
+          const bx = xx - tw / 2, by = /none/.test(lb.style) ? yy0 - 7 : up2 || lb.yloc === 'belowbar' ? yy0 + 6 : yy0 - 22;
+          if (!/none/.test(lb.style) && lb.color !== null) { c.fillStyle = lb.color || 'rgba(120,123,134,.9)'; c.beginPath(); c.roundRect ? c.roundRect(bx, by, tw, 16, 4) : c.rect(bx, by, tw, 16); c.fill(); }
+          c.fillStyle = lb.textcolor || (lb.color === null || /none/.test(lb.style) ? col.foam : '#fff'); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, xx, by + 8);
+        }
+        for (const t of D2.tables) {
+          if (!t.cells.length) continue; const cw = 74, ch = 17, tw2 = t.cols * cw, th = t.rows * ch, right = /right/.test(t.pos), bottom = /bottom/.test(t.pos), mid = /center/.test(t.pos) && !/left|right/.test(t.pos);
+          const ox = mid ? (pw - tw2) / 2 : right ? pw - tw2 - 6 : 6, oy = bottom ? paneBottom - th - 20 : 6; c.textBaseline = 'middle';
+          for (const cell of t.cells) { const cx = ox + cell.c * cw, cy = oy + cell.r * ch; c.fillStyle = cell.bg || t.bg || 'rgba(11,15,25,.6)'; c.fillRect(cx, cy, cw - 1, ch - 1); c.fillStyle = cell.color || col.foam; c.textAlign = 'left'; c.fillText((cell.text || '').slice(0, 12), cx + 4, cy + ch / 2); }
         }
       }
 
@@ -372,11 +433,7 @@
         const st2 = niceStep((mx - mn) / 3);
         for (let v = Math.ceil(mn / st2) * st2; v < mx; v += st2) { const yy = Math.round(sy(v)) + 0.5; c.strokeStyle = col.grid; c.beginPath(); c.moveTo(0, yy); c.lineTo(pw, yy); c.stroke(); c.fillText(fmtAxis(v, st2), W - 6, yy); }
         c.save(); c.beginPath(); c.rect(0, t0, pw, t1 - t0); c.clip();
-        for (const x of subs) {
-          c.beginPath(); let started = false;
-          for (let i = i0; i <= i1; i++) { const v = x.values[i]; if (!Number.isFinite(v)) { started = false; continue; } const xx = this.x(i), yy = sy(v); if (!started) { c.moveTo(xx, yy); started = true; } else c.lineTo(xx, yy); }
-          c.strokeStyle = x.color; c.lineWidth = 1.4; c.stroke();
-        }
+        for (const x of subs) plotS(x, sy, i0, i1, x.width ? Math.min(x.width, 2.4) : 1.4);
         c.lineWidth = 1; c.restore();
       }
       /* etiketler */
