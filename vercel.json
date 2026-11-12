@@ -8,8 +8,20 @@
   ],
   "routes": [
     {
-      "src": "/(.*)",
+      "src": "/api/(.*)",
       "dest": "server/app.py"
+    },
+    {
+      "src": "/healthz",
+      "dest": "server/app.py"
+    },
+    {
+      "src": "/tg/(.*)",
+      "dest": "server/app.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/web/$1"
     }
   ]
 }
