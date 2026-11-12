@@ -1,15 +1,13 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "server/app.py",
-      "use": "@vercel/python"
+  "functions": {
+    "server/app.py": {
+      "maxDuration": 30
     }
-  ],
+  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "server/app.py" },
-    { "source": "/healthz", "destination": "server/app.py" },
-    { "source": "/tg/(.*)", "destination": "server/app.py" },
-    { "source": "/(.*)", "destination": "/web/$1" }
+    { "source": "/api/(.*)", "destination": "/server/app.py" },
+    { "source": "/healthz", "destination": "/server/app.py" },
+    { "source": "/tg/(.*)", "destination": "/server/app.py" },
+    { "source": "/((?!api|healthz|tg|css|js|fonts|hakkinda).*)", "destination": "/web/$1" }
   ]
 }
