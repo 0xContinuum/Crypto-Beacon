@@ -6,22 +6,10 @@
       "use": "@vercel/python"
     }
   ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "server/app.py"
-    },
-    {
-      "src": "/healthz",
-      "dest": "server/app.py"
-    },
-    {
-      "src": "/tg/(.*)",
-      "dest": "server/app.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/web/$1"
-    }
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "server/app.py" },
+    { "source": "/healthz", "destination": "server/app.py" },
+    { "source": "/tg/(.*)", "destination": "server/app.py" },
+    { "source": "/(.*)", "destination": "/web/$1" }
   ]
 }
