@@ -12,7 +12,7 @@
  */
 window.BEACON_CONFIG = {
   telegramBot: 'BeaconCrypto_Bot',   // botun kullanıcı adı (@ olmadan). Web girişi ve "Telegram'da aç" düğmesi için.
-  apiUrl: 'https://crypto-beacon-three.vercel.app',   // Beacon sunucusu. Boş bırakılırsa Topluluk/Hesap görünmez (sunucusuz mod).
+  apiUrl: 'https://crypto-beacon-hibrit.vercel.app/',   // Beacon sunucusu. Boş bırakılırsa Topluluk/Hesap görünmez (sunucusuz mod).
   // Tarayıcı sürümü (web) reklamı. null ise hiç reklam görünmez. Reklam, ziyaretçi onayından sonra yüklenir. Telegram içinde asla gösterilmez.
   //   AdSense: { provider: 'adsense', client: 'ca-pub-XXXXXXXXXXXXXXXX', slots: { a: '1234567890', b: '0987654321' } }
   //   Başka ağ: { provider: 'html', slots: { a: '<ağın verdiği kod>', b: '<...>' } }
