@@ -33,4 +33,28 @@ def _build():
     return fallback
 
 
-app = _build()
+class _PathFix:
+    """Vercel yeniden yazımdan sonra işlevi '/api/index' yoluyla çağırır; özgün yol '__p' sorgu parametresinde gelir ve burada geri yüklenir."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            from urllib.parse import parse_qsl, unquote, urlencode
+
+            qs = parse_qsl(scope.get("query_string", b"").decode("latin-1"), keep_blank_values=True)
+            orig = None
+            rest = []
+            for k, v in qs:
+                if k == "__p" and orig is None:
+                    orig = v
+                else:
+                    rest.append((k, v))
+            if orig is not None or scope.get("path", "").startswith("/api/index"):
+                path = "/" + unquote(orig or "").lstrip("/")
+                scope = dict(scope, path=path, raw_path=path.encode(), query_string=urlencode(rest).encode())
+        await self.inner(scope, receive, send)
+
+
+app = _PathFix(_build())
