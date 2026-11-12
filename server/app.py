@@ -855,8 +855,7 @@ def create_app(S=None, db=None):
     if S.bot_token and S.public_url and not S.dev_mode and not S.tg and not os.environ.get("VERCEL"):  # sunucusuz ortamda arka plan iş parçacığı yaşamaz: webhook elle kaydedilir
         threading.Thread(target=lambda: tg("setWebhook", {"url": S.public_url + "/tg/webhook", "secret_token": S.webhook_secret or None, "allowed_updates": ["message", "callback_query"]}), daemon=True).start()
     return app
-    # Dosyanın en altına eklenecek:
-app = default_app()
+ 
 
 
 def default_app():
