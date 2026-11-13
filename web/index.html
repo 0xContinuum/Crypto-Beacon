@@ -28,12 +28,7 @@
     <!-- RADAR -->
     <section id="v-radar" class="view on" aria-label="Radar">
       <div class="seg" role="group" aria-label="Zaman dilimi" id="tfSeg">
-        <button data-tf="15m" aria-pressed="false">15d</button>
-        <button data-tf="1h" aria-pressed="true">1s</button>
-        <button data-tf="4h" aria-pressed="false">4s</button>
-        <button data-tf="1d" aria-pressed="false">1G</button>
-        <button data-tf="1w" aria-pressed="false">1H</button>
-        <span class="gap"></span>
+        <div class="tfs" id="tfs"><button data-tf="15m" aria-pressed="false">15d</button><button data-tf="1h" aria-pressed="true">1s</button><button data-tf="4h" aria-pressed="false">4s</button><button data-tf="1d" aria-pressed="false">1G</button><button data-tf="1w" aria-pressed="false">1H</button></div>
         <button class="tool" id="zoomOut" aria-label="Uzaklaştır"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="9" r="5.5"/><path d="M13.5 13.5L17 17M6.5 9h5"/></svg></button>
         <button class="tool" id="shareBtn" aria-label="Grafiği görsel olarak paylaş"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v9M6.5 6.5L10 3l3.5 3.5M4 11v5h12v-5"/></svg></button>
         <button class="tool" id="fsBtn" aria-label="Tam ekran"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4"/></svg></button>
@@ -163,7 +158,7 @@
       <section class="sec" id="idSec">
         <h2>Telegram kimliğiniz</h2>
         <div class="idrow"><code id="myId" class="num">Telegram dışında açık</code><button class="chip" id="copyId">Kopyala</button></div>
-        <p class="note" style="margin-top:8px">Pro plana geçmek için gereklidir.</p>
+        <p class="note" style="margin-top:8px">Birine Pro vermek isterseniz o kişi uygulamayı Telegram'dan açıp bu sayıyı size iletsin.</p>
       </section>
       <section class="sec" id="ownerSec" hidden><span id="legacyOwner" hidden></span>
         <h2>Pro ver (yalnızca sahip)</h2>
@@ -179,7 +174,7 @@
       <section class="sec">
         <h2>Pro neleri açar</h2>
         <ul class="list">
-          <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5l4 4 8-9"/></svg><span>Tarayıcıdaki coinlerin tamamını (ücretsiz: BTC, ETH, SOL)</span></li>
+          <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5l4 4 8-9"/></svg><span>Tarayıcıda 10 coinin tamamı (ücretsiz: BTC, ETH, SOL)</span></li>
           <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5l4 4 8-9"/></svg><span>Tüm coinler için grafik ve geriye dönük test</span></li>
           <li><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5l4 4 8-9"/></svg><span>Bot uyarıları ve sunucuda kaydedilen doğrulanabilir sinyal geçmişi (yolda)</span></li>
         </ul>
@@ -244,6 +239,18 @@
     <button class="cta ghost" id="pineClose" style="margin-top:8px">Kapat</button>
   </div></div>
 
+  <div class="scrim" id="ctfSheet" role="dialog" aria-modal="true" aria-label="Özel zaman aralıkları"><div class="panel">
+    <div class="grab"></div><h3>Özel zaman aralıkları <span class="pill">Pro</span> <small class="dim" id="ctfCount"></small></h3>
+    <p class="note">İstediğiniz süreyi ekleyin; her coin ve her grafikte kullanılır. Mumlar Binance verisinden birleştirilir. Gün 2-60, hafta 2-26, ay 1-24.</p>
+    <div class="ctfrow"><input id="ctfN" type="number" inputmode="numeric" min="1" max="720" value="2" aria-label="Sayı"><select id="ctfU" aria-label="Birim"><option value="d">gün (G)</option><option value="w">hafta (H)</option><option value="M">ay (A)</option><option value="h">saat (s)</option><option value="m">dakika (d)</option></select><button class="cta" id="ctfAdd">Ekle</button></div>
+    <div id="ctfErr" class="fxerr" role="alert" hidden></div>
+    <p class="note" style="margin-top:12px">Hızlı ekle</p>
+    <div class="ctfquick" id="ctfQuick"><button data-id="c2d">2G</button><button data-id="c3d">3G</button><button data-id="c4d">4G</button><button data-id="c14d">14G</button><button data-id="c2w">2H</button><button data-id="c1M">1A</button><button data-id="c2M">2A</button></div>
+    <p class="note" style="margin-top:12px">Eklenenler</p>
+    <div id="ctfList" class="ctflist"></div>
+    <button class="cta ghost" id="ctfClose" style="margin-top:8px">Kapat</button>
+  </div></div>
+
   <div class="scrim" id="fxSheet" role="dialog" aria-modal="true" aria-label="Göstergelerim"><div class="panel">
     <div class="grab"></div><h3>Göstergelerim <span class="pill">Pro</span></h3>
     <p class="note" id="fxIntro">Kendi formülünüzü yazın, grafiğe ekleyin. Formüller cihazınızda çalışır ve geleceğe bakmaz.</p>
@@ -303,11 +310,13 @@
 <script src="js/engine.js"></script>
 <script src="js/data.js"></script>
 <script src="js/formation.js"></script>
+<script src="js/sync.js"></script>
 <script src="js/script2.js"></script>
 <script src="js/script.js"></script>
 <script src="js/pine.js"></script>
 <script src="js/market.js"></script>
 <script src="js/chart.js"></script>
+<script src="js/draw.js"></script>
 <script src="js/app.js"></script>
 <script src="js/market-ui.js"></script>
 <script src="js/community.js"></script>

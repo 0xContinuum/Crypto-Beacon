@@ -99,6 +99,9 @@
     get plotW() { return this.W - this.axisW; }
     get R() { return this.n - 1 + this.rightPad - this.shift; }
     x(i) { return this.plotW - this.barW * (this.R - i) - this.barW / 2; }
+    idxF(px) { return this.R - (this.plotW - px - this.barW / 2) / this.barW; }
+    priceAt(py) { const g = this._geo; return g ? g.top - ((py - g.priceTop) / (g.priceBot - g.priceTop)) * (g.top - g.bot) : NaN; }
+    yOf(p) { return this._geo ? this._geo.y(p) : NaN; }
     idxAt(px) { return Math.round(this.R - (this.plotW - px - this.barW / 2) / this.barW); }
     _clampShift() { const max = Math.max(0, this.n - 1 + this.rightPad - 12); this.shift = Math.max(0, Math.min(max, this.shift)); }
 
@@ -115,14 +118,16 @@
       const cv = this.cv; let moved = false, sx = 0, sy = 0, pinch = 0, lastTap = 0;
       const dist = () => { const a = [...this._pts.values()]; return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };
       cv.addEventListener('pointerdown', (e) => {
+        if (this.drawCtl && this._pts.size === 0 && this.drawCtl.down(e.offsetX, e.offsetY, e)) { this._cap = e.pointerId; cv.setPointerCapture(e.pointerId); e.preventDefault(); return; }
         cv.setPointerCapture(e.pointerId);
         this._pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
         moved = false; sx = e.offsetX; sy = e.offsetY;
         if (this._pts.size === 2) pinch = dist();
       });
       cv.addEventListener('pointermove', (e) => {
+        if (this._cap === e.pointerId) { this.drawCtl.move(e.offsetX, e.offsetY, e); return; }
         const p = this._pts.get(e.pointerId);
-        if (!p) { if (e.pointerType === 'mouse') this._cross(e.offsetX, e.offsetY); return; }
+        if (!p) { if (this.drawCtl && this.drawCtl.hover(e.offsetX, e.offsetY, e)) return; if (e.pointerType === 'mouse') this._cross(e.offsetX, e.offsetY); return; }
         const px = p.x; p.x = e.offsetX; p.y = e.offsetY;
         if (this._pts.size === 2) {
           const d = dist(); if (pinch > 0) { const a = [...this._pts.values()]; this._zoomAt(d / pinch, (a[0].x + a[1].x) / 2); } pinch = d; moved = true;
@@ -133,6 +138,7 @@
         this.invalidate();
       });
       const up = (e) => {
+        if (this._cap === e.pointerId) { this._cap = null; this.drawCtl.up(e.offsetX, e.offsetY, e); return; }
         const had = this._pts.delete(e.pointerId);
         if (!had) return;
         if (!moved && this._pts.size === 0 && Math.abs(e.offsetX - sx) < 6 && Math.abs(e.offsetY - sy) < 6) {
@@ -179,6 +185,7 @@
       if (posActive) { for (const v of [pos.sl, pos.tp1, pos.entry]) { if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } } }
       const span = Math.max(hi - lo, hi * 1e-5), top = hi + span * 0.06, bot = lo - span * (L.vol ? 0.2 : 0.06);
       const y = (p) => priceTop + (top - p) / (top - bot) * (priceBot - priceTop);
+      this._geo = { y, top, bot, priceTop, priceBot, paneBottom, pw };
 
       /* ızgara */
       c.lineWidth = 1; c.font = `500 11px ${col.font}`; c.textBaseline = 'middle';
@@ -382,6 +389,9 @@
         }
       }
 
+      /* çizim araçları (kullanıcının çizimleri) */
+      if (this.drawCtl) this.drawCtl.render(c, this._geo, 'clip');
+
       /* son fiyat çizgisi */
       const lastK = cs[cs.length - 1], ly = y(lastK.c), up = lastK.c >= lastK.o, lcol = up ? col.bull : col.bear;
       c.strokeStyle = lcol; c.globalAlpha = 0.55; c.setLineDash([2, 4]); c.beginPath(); c.moveTo(0, Math.round(ly) + 0.5); c.lineTo(pw, Math.round(ly) + 0.5); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
@@ -393,6 +403,7 @@
         c.fillStyle = g; c.fillRect(sx - 70, 0, 140, paneBottom);
       }
       c.restore();
+      if (this.drawCtl) this.drawCtl.render(c, this._geo, 'axis');
 
       /* son fiyat etiketi + geri sayım */
       if (ly > priceTop - 4 && ly < priceBot + 4) {
@@ -439,9 +450,9 @@
       /* etiketler */
       if (cu.length) {
         c.font = `600 10px ${col.font}`; c.textAlign = 'left'; c.textBaseline = 'top'; let ty = priceTop + (d.formation ? 20 : 4);
-        for (const x of ovl) { c.fillStyle = x.color; c.fillText('— ' + x.label, 8, ty); ty += 13; }
+        for (const x of ovl) { c.fillStyle = x.color; c.fillText('— ' + x.label, this.padL || 8, ty); ty += 13; }
         let sy2 = paneBottom - subH + 3;
-        for (const x of subs) { c.fillStyle = x.color; c.fillText('— ' + x.label, 8, sy2); sy2 += 12; }
+        for (const x of subs) { c.fillStyle = x.color; c.fillText('— ' + x.label, this.padL || 8, sy2); sy2 += 12; }
       }
 
       /* crosshair */
@@ -465,5 +476,5 @@
   }
 
   root.BeaconChart = BeaconChart;
-  root.BeaconFmt = { fmtPrice, fmtDuration };
+  root.BeaconFmt = { fmtPrice, fmtDuration, fmtAxis };
 })(typeof self !== 'undefined' ? self : this);

@@ -275,3 +275,68 @@ def read_web_token(token, bot_token, now):
         raise
     except Exception:
         raise AuthError("oturum geçersiz")
+
+
+# ——— Cihazlar arası eşitleme (göstergeler, özel zaman aralıkları, takip listeleri, çizimler) ———
+SYNC_MAX_BYTES = 400_000
+
+
+def _num(v, lo=0, hi=4_102_444_800_000):
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v:
+        raise ValueError("sayı bekleniyordu")
+    return max(lo, min(hi, v))
+
+
+def sync_clean(data):
+    """İstemcinin gönderdiği eşitleme paketini beyaz listeyle temizler. Geçersizse ValueError."""
+    if not isinstance(data, dict):
+        raise ValueError("Geçersiz veri")
+    out = {}
+    cu = data.get("custom", [])
+    if not isinstance(cu, list) or len(cu) > 40:
+        raise ValueError("Çok fazla gösterge")
+    out["custom"] = []
+    for it in cu:
+        if not isinstance(it, dict):
+            continue
+        out["custom"].append({"id": clean(str(it.get("id", "")), 24), "name": clean(str(it.get("name", "")), 40), "code": str(it.get("code", ""))[:30000], "on": bool(it.get("on", True)), "u": int(_num(it.get("u", 0)))})
+    dr = data.get("draw", [])
+    if not isinstance(dr, list) or len(dr) > 600:
+        raise ValueError("Çok fazla çizim")
+    out["draw"] = []
+    for it in dr:
+        if not isinstance(it, dict) or not isinstance(it.get("pts", []), list):
+            continue
+        pts = [{"t": int(_num(p.get("t", 0))), "p": float(_num(p.get("p", 0), -1e15, 1e15))} for p in it["pts"][:6] if isinstance(p, dict)]
+        st = it.get("st", {}) if isinstance(it.get("st", {}), dict) else {}
+        st = {clean(str(k), 12): (v if isinstance(v, (int, float, bool)) else clean(str(v), 40)) for k, v in list(st.items())[:10]}
+        out["draw"].append({"id": clean(str(it.get("id", "")), 24), "sym": clean(str(it.get("sym", "")), 20), "type": clean(str(it.get("type", "")), 16), "pts": pts, "st": st,
+                            "tx": clean(str(it.get("tx", "")), 200), "lk": bool(it.get("lk", False)), "hd": bool(it.get("hd", False)), "u": int(_num(it.get("u", 0)))})
+    for k in ("ctf", "wl"):
+        v = data.get(k)
+        if isinstance(v, dict):
+            out[k] = {"u": int(_num(v.get("u", 0))), "v": v.get("v")}
+    ctf = out.get("ctf")
+    if ctf is not None:
+        if not isinstance(ctf["v"], list) or len(ctf["v"]) > 8:
+            raise ValueError("Geçersiz zaman aralığı listesi")
+        ctf["v"] = [clean(str(x), 8) for x in ctf["v"]]
+    wl = out.get("wl")
+    if wl is not None:
+        w = wl["v"]
+        if not isinstance(w, dict) or not isinstance(w.get("lists", []), list) or len(w.get("lists", [])) > 5:
+            raise ValueError("Geçersiz takip listesi")
+        wl["v"] = {"act": w.get("act", 0) if isinstance(w.get("act", 0), (int, float, str)) else 0,
+                   "lists": [{"id": l.get("id", 0) if isinstance(l.get("id", 0), (int, float, str)) else 0, "name": clean(str(l.get("name", "")), 30),
+                              "items": [clean(str(s), 20) for s in (l.get("items") or [])[:40]]} for l in w.get("lists", []) if isinstance(l, dict)]}
+    tomb = data.get("tomb", {})
+    out["tomb"] = {}
+    if isinstance(tomb, dict):
+        for k in ("custom", "draw"):
+            t = tomb.get(k, {})
+            if isinstance(t, dict):
+                items = sorted(((clean(str(i), 24), int(_num(u))) for i, u in t.items() if isinstance(u, (int, float)) and not isinstance(u, bool)), key=lambda x: -x[1])[:500]
+                out["tomb"][k] = dict(items)
+    if len(json.dumps(out, ensure_ascii=False)) > SYNC_MAX_BYTES:
+        raise ValueError("Veri çok büyük")
+    return out

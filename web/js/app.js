@@ -8,7 +8,12 @@
   const DEMO = /[?&]demo=1/.test(location.search);
   const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const MIN = 60000;
-  const TFL = (tf) => B.TF[tf].label;
+  const TFL = (tf) => (B.TF[tf] || regTf(tf) || B.TF['1h']).label;
+  /* özel zaman dilimini motorun tablosuna kaydeder */
+  function regTf(id) {
+    if (B.TF[id]) return B.TF[id]; const p = D.parseTf(id); if (!p) return null; const ms = p.ms;
+    return (B.TF[id] = { ms, label: p.label, atrMult: ms >= 6048e5 ? 2.2 : ms >= 864e5 ? 2.0 : ms >= 144e5 ? 1.8 : 1.6, maxBars: ms >= 6048e5 ? 20 : ms >= 864e5 ? 30 : ms >= 144e5 ? 60 : 72, horizon: ms >= 144e5 ? 'long' : 'short', api: id });
+  }
   const isNum = Number.isFinite;
 
   /* ——— Telegram ——— */
@@ -24,12 +29,14 @@
   const haptic = (k) => { try { if (!tg || !tg.HapticFeedback) return; k === 'ok' ? tg.HapticFeedback.notificationOccurred('success') : tg.HapticFeedback.impactOccurred('light'); } catch (e) {} };
 
   /* ——— kalıcı durum (localStorage + Telegram CloudStorage) ——— */
-  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false }, form: { pivot: 10, tol: 1.5, history: true, maxForms: 120 }, proUntil: 0, ads: { d: '', n: 0 }, custom: [], ts: 0 };
+  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false }, form: { pivot: 10, tol: 1.5, history: true, maxForms: 120 }, proUntil: 0, ads: { d: '', n: 0 }, custom: [], ctf: [], ctfU: 0, ts: 0 };
   let S = JSON.parse(JSON.stringify(DEF));
   try { const r = JSON.parse(localStorage.getItem('bcn') || 'null'); if (r) S = Object.assign(S, r, { layers: Object.assign({}, DEF.layers, r.layers || {}) }); } catch (e) {}
   S.form = Object.assign({}, DEF.form, S.form);
   if (S.sym === 'TON') S.sym = 'GRAM'; // Toncoin'in yeni adı
+  const SY = window.BeaconSync, trk = SY ? SY.tracker() : null; if (trk) trk.reset(S);
   function save() {
+    if (trk && trk.scan(S)) schedSync();
     S.ts = Date.now();
     const j = JSON.stringify(S);
     try { localStorage.setItem('bcn', j); } catch (e) {}
@@ -38,7 +45,7 @@
   try {
     tg && tg.CloudStorage && tg.CloudStorage.getItem('bcn', (err, v) => {
       if (err || !v) return;
-      try { const c = JSON.parse(v); if (c && c.ts > S.ts) { S = Object.assign(S, c, { layers: Object.assign({}, DEF.layers, c.layers || {}) }); S.form = Object.assign({}, DEF.form, S.form); applyState(); if (cur) refreshFormation(); } } catch (e) {}
+      try { const c = JSON.parse(v); if (c && c.ts > S.ts) { S = Object.assign(S, c, { layers: Object.assign({}, DEF.layers, c.layers || {}) }); S.form = Object.assign({}, DEF.form, S.form); if (trk) trk.reset(S); fxRender(); applyState(); applyCustom(); if (cur) refreshFormation(); } } catch (e) {}
     });
   } catch (e) {}
 
@@ -53,6 +60,9 @@
   const today = () => new Date().toISOString().slice(0, 10);
   const adsUsed = () => (srv() ? (API.me ? API.me.ads.pro_used : 0) : S.ads.d === today() ? S.ads.n : 0);
   const coinOf = (s) => D.meta(s);
+  const ctfList = () => (Array.isArray(S.ctf) ? S.ctf : []).filter((id) => D.isCustomTf(id));
+  ctfList().forEach(regTf);
+  const tfAllowed = (tf) => !D.isCustomTf(tf) || (isPro() && ctfList().includes(tf));
   const allowed = (s) => coinOf(s).free || isPro();
 
   /* ——— küçük yardımcılar ——— */
@@ -607,8 +617,34 @@
   };
 
   /* radar kontrolleri */
-  function setTf(tf) { S.tf = tf; save(); applyState(); loadRadar(); }
-  $('tfSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-tf]'); if (b && b.dataset.tf !== S.tf) { haptic(); setTf(b.dataset.tf); } });
+  function setTf(tf) { if (D.isCustomTf(tf)) { if (!isPro()) { toast('Özel zaman aralıkları Pro ile açılır'); go('pro'); return; } regTf(tf); } S.tf = tf; save(); applyState(); loadRadar(); }
+  $('tfSeg').addEventListener('click', (e) => {
+    if (e.target.closest('#tfAdd')) { haptic(); if (!isPro()) { toast('Özel zaman aralıkları Pro ile açılır'); go('pro'); return; } renderCtf(); openSheet('ctfSheet'); return; }
+    const b = e.target.closest('[data-tf]'); if (b && b.dataset.tf !== S.tf) { haptic(); setTf(b.dataset.tf); }
+  });
+  /* özel zaman dilimi seçicisi */
+  function renderTfSeg() {
+    const seg = $('tfSeg'); seg.querySelectorAll('.ctf').forEach((x) => x.remove());
+    const anchor = seg.querySelector('[data-tf="1w"]'); let at = anchor;
+    const mk = (cls, html, attrs) => { const b = document.createElement('button'); b.className = 'ctf ' + cls; b.innerHTML = html; for (const k in attrs) b.setAttribute(k, attrs[k]); at.after(b); at = b; return b; };
+    if (isPro()) for (const id of ctfList()) { const p = D.parseTf(id); mk('', p.label, { 'data-tf': id, 'aria-pressed': String(S.tf === id) }); }
+    mk('add', '+', { id: 'tfAdd', 'aria-label': 'Özel zaman aralığı ekle', title: 'Özel zaman aralığı' });
+  }
+  function renderCtf() {
+    const list = ctfList(); $('ctfList').innerHTML = list.length ? list.map((id) => `<span class="ctfchip">${escH(D.parseTf(id).label)}<button data-ctf-del="${id}" aria-label="${escH(D.parseTf(id).label)} sil">×</button></span>`).join('') : '<p class="note">Henüz özel aralık yok.</p>';
+    $('ctfCount').textContent = list.length + '/' + D.CTF_MAX; $('ctfErr').hidden = true;
+  }
+  function ctfAdd(id) {
+    const err = (m) => { $('ctfErr').textContent = m; $('ctfErr').hidden = false; };
+    if (!D.isCustomTf(id)) return err('Bu aralık eklenemez. Hazır olan (15d, 1s, 4s, 1G, 1H) zaten var; sınırlar: dakika 1-720, saat 1-72, gün 2-60, hafta 2-26, ay 1-24.');
+    if (ctfList().includes(id)) return err('Bu aralık zaten ekli.');
+    if (ctfList().length >= D.CTF_MAX) return err('En fazla ' + D.CTF_MAX + ' özel aralık eklenebilir.');
+    S.ctf = ctfList().concat(id); S.ctfU = Date.now(); regTf(id); save(); renderCtf(); renderTfSeg(); toast(D.parseTf(id).label + ' eklendi');
+  }
+  $('ctfAdd').onclick = () => { const n = parseInt($('ctfN').value, 10), u = $('ctfU').value; if (!Number.isInteger(n)) { $('ctfErr').textContent = 'Bir sayı girin.'; $('ctfErr').hidden = false; return; } ctfAdd('c' + n + u); };
+  $('ctfQuick').addEventListener('click', (e) => { const b = e.target.closest('[data-id]'); if (b) ctfAdd(b.dataset.id); });
+  $('ctfList').addEventListener('click', (e) => { const b = e.target.closest('[data-ctf-del]'); if (!b) return; const id = b.dataset.ctfDel; S.ctf = ctfList().filter((x) => x !== id); S.ctfU = Date.now(); if (S.tf === id) S.tf = '1d'; save(); renderCtf(); applyState(); if (!S.ctf.includes(S.tf) && D.isCustomTf(S.tf)) loadRadar(); });
+  $('ctfClose').onclick = () => closeSheet('ctfSheet');
   $('layers').addEventListener('click', (e) => {
     const b = e.target.closest('[data-l]'); if (!b) return;
     const k = b.dataset.l; S.layers[k] = !S.layers[k]; save(); haptic(); b.setAttribute('aria-pressed', S.layers[k]); chart.setLayers(S.layers);
@@ -618,10 +654,13 @@
   $('hzLong').onclick = () => { haptic(); setTf('1d'); window.scrollTo({ top: 0, behavior: REDUCED ? 'auto' : 'smooth' }); };
 
   function applyState() {
-    { const m = D.meta(S.sym), ok = D.tfsFor(S.sym); if (!ok.includes(S.tf)) { S.tf = '1d'; save(); }
+    if (D.isCustomTf(S.tf) && !tfAllowed(S.tf) && (!srv() || API.me)) { S.tf = '1d'; save(); loadRadar(); }
+    renderTfSeg();
+    { const m = D.meta(S.sym), ok = D.tfsFor(S.sym, ctfList()); if (!ok.includes(S.tf) && !D.isCustomTf(S.tf)) { S.tf = '1d'; save(); }
       $('symName').textContent = m.kind === 'index' ? D.label(S.sym) : m.base; $('symName').nextElementSibling.textContent = m.kind === 'perp' ? '/USDT.P' : m.kind === 'index' ? '' : '/USDT';
-      $('tfSeg').querySelectorAll('[data-tf]').forEach((b) => { b.disabled = !ok.includes(b.dataset.tf); }); }
+      $('tfSeg').querySelectorAll('[data-tf]').forEach((b) => { b.disabled = !ok.includes(b.dataset.tf) && !(m.kind !== 'index' && D.isCustomTf(b.dataset.tf)); }); const ad = $('tfAdd'); if (ad) ad.disabled = m.kind === 'index'; }
     $('tfSeg').querySelectorAll('[data-tf]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tf === S.tf));
+    { const pb = $('tfSeg').querySelector('.tfs [aria-pressed="true"]'), t = $('tfs'); if (pb && t) t.scrollLeft = Math.max(0, pb.offsetLeft - 60); }
     $('layers').querySelectorAll('[data-l]').forEach((b) => b.setAttribute('aria-pressed', !!S.layers[b.dataset.l]));
     chart.setLayers(S.layers);
     renderPro();
@@ -698,12 +737,40 @@
   });
   $('fxList').addEventListener('change', (e) => { const c = e.target.closest('[data-fx-on]'); if (c) { S.custom[+c.dataset.fxOn].on = c.checked; S.custom[+c.dataset.fxOn].err = ''; save(); applyCustom(); fxRender(); } });
 
+  /* ——— çizim ve ölçüm araçları ——— */
+  if (window.BeaconDraw) window.BeaconDraw.init({ chart, host: $('chartwrap'), state: () => S, save, isPro, toast, goPro: () => go('pro') });
+
+  /* ——— cihazlar arası eşitleme (sunucu varsa): göstergeler, çizimler, özel aralıklar, takip listeleri ——— */
+  let syRev = -1, syBusy = false, syAgain = false, syTimer = 0, sySig = '';
+  function schedSync() { if (!srv() || !API.me) return; clearTimeout(syTimer); syTimer = setTimeout(syncNow, 1500); }
+  async function syncNow() {
+    if (!SY || !srv() || !API.me) return;
+    if (syBusy) { syAgain = true; return; }
+    syBusy = true;
+    try {
+      const r = await API.call('GET', '/api/me/sync?rev=' + syRev); let remote = r.changed ? r.data : null, rev = r.rev, changed = r.changed;
+      for (let k = 0; k < 3; k++) {
+        const local = SY.pack(S), m = changed ? SY.merge(local, remote) : { merged: local, local: false, push: JSON.stringify(local) !== sySig };
+        if (m.local) { SY.apply(S, m.merged); trk.reset(S); try { localStorage.setItem('bcn', JSON.stringify(S)); } catch (e) {} afterSync(); }
+        if (!m.push) { syRev = rev; sySig = JSON.stringify(SY.pack(S)); break; }
+        try { const p = await API.call('PUT', '/api/me/sync', { base: rev, data: m.merged }); syRev = p.rev; sySig = JSON.stringify(SY.pack(S)); break; }
+        catch (e) { if (e.status === 409 && e.data) { rev = e.data.rev; remote = e.data.data; changed = true; continue; } throw e; }
+      }
+    } catch (e) { /* ağ yoksa sonra yeniden denenir */ }
+    syBusy = false;
+    if (syAgain) { syAgain = false; setTimeout(syncNow, 200); }
+  }
+  function afterSync() { try { fxRender(); applyCustom(); applyState(); if (window.BeaconDraw) window.BeaconDraw.reload(); if ($('symSheet').classList.contains('on')) renderPicker(); } catch (e) {} }
+  setInterval(() => { if (!document.hidden) syncNow(); }, 45000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) syncNow(); });
+  window.addEventListener('focus', syncNow);
+
   /* ——— açılış ——— */
   if (!allowed(S.sym)) S.sym = 'BTC';
   applyState();
   if (!S.legal) openSheet('legal');
   loadRadar();
-  if (srv() && (!API.web || API.hasToken())) API.refreshMe().then(() => { applyState(); if (window.BeaconCommunity) window.BeaconCommunity.init(); }).catch((e) => toast(e.message || 'Sunucuya bağlanılamadı'));
+  if (srv() && (!API.web || API.hasToken())) API.refreshMe().then(() => { applyState(); syncNow(); if (window.BeaconCommunity) window.BeaconCommunity.init(); }).catch((e) => toast(e.message || 'Sunucuya bağlanılamadı'));
 
   /* test için dışa açılan küçük yüzey */
   /* ——— tam ekran grafik ——— */
@@ -770,5 +837,5 @@
   $('shCopy').onclick = async () => { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': shareBlob })]); toast('Görsel kopyalandı'); } catch (e) { toast('Kopyalanamadı: İndir\'i kullanın'); } };
   $('shareBtn').onclick = () => { haptic(); const cv = $('cv'); if (!cv) return; shareImage(cv, D.label(S.sym) + ' · ' + TFL(S.tf), 'Skor ' + $('score').textContent + ' · ' + $('verd').textContent + ' · ' + $('price').textContent, 'beacon-' + S.sym + '-' + S.tf); };
 
-  window.__beacon = { save, fxRender, shareImage, setFs, applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
+  window.__beacon = { syncNow, save, fxRender, shareImage, setFs, applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
 })();

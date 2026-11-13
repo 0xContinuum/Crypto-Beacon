@@ -95,6 +95,21 @@ class Api(unittest.TestCase):
         for _ in range(5): self.ok("POST", "/api/me/photo", uid=U1, body={"image": PNG})
         self.err(429, "POST", "/api/me/photo", uid=U1, body={"image": PNG})
 
+    def test_sync(self):
+        self.err(401, "GET", "/api/me/sync")
+        d = self.ok("GET", "/api/me/sync", uid=U1); self.assertEqual((d["rev"], d["changed"], d["data"]), (0, True, None))
+        pack = {"custom": [{"id": "a1", "name": "RSI", "code": "plot(rsi(close,14))", "on": True, "u": 5}], "draw": [{"id": "d1", "sym": "BTC", "type": "trend", "pts": [{"t": 1, "p": 2.5}, {"t": 3, "p": 4}], "st": {"c": "#fff", "w": 2}, "u": 9}],
+                "ctf": {"u": 7, "v": ["c14d"]}, "wl": {"u": 8, "v": {"act": 1, "lists": [{"id": 1, "name": "L", "items": ["BTC", "ETH"]}]}}, "tomb": {"custom": {"zz": 4}}}
+        r = self.ok("PUT", "/api/me/sync", uid=U1, body={"base": 0, "data": pack}); self.assertEqual(r["rev"], 1)
+        d = self.ok("GET", "/api/me/sync?rev=1", uid=U1); self.assertFalse(d["changed"])
+        d = self.ok("GET", "/api/me/sync?rev=0", uid=U1); self.assertEqual(d["data"]["custom"][0]["code"], "plot(rsi(close,14))"); self.assertEqual(d["data"]["draw"][0]["pts"][1]["p"], 4.0); self.assertEqual(d["data"]["ctf"]["v"], ["c14d"])
+        e = self.err(409, "PUT", "/api/me/sync", uid=U1, body={"base": 0, "data": pack})
+        self.assertEqual(e.get("rev"), 1)
+        d2 = self.ok("GET", "/api/me/sync", uid=U2 if "U2" in globals() else 7777); self.assertEqual(d2["rev"], 0)
+        self.err(400, "PUT", "/api/me/sync", uid=U1, body={"base": 1, "data": {"custom": "x"}})
+        self.err(400, "PUT", "/api/me/sync", uid=U1, body={"base": 1, "data": {"ctf": {"u": 1, "v": ["a"] * 9}}})
+        self.err(400, "PUT", "/api/me/sync", uid=U1, body={"base": 1, "data": {"custom": [{"id": "x", "code": "a", "u": "bad"}]}})
+
     def test_index(self):
         d = self.ok("GET", "/api/index/btcd"); self.assertEqual((d["name"], d["ready"]), ("BTCD", False))
         self.err(404, "GET", "/api/index/FOO")

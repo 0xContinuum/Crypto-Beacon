@@ -135,3 +135,12 @@ TOTAL/BTC.D/USDT.D kodu hazır ama kapalıdır. Açmak için `config.local.js` i
 ## Formül 2 (Pine'ın tamamına yakınını çalıştıran motor)
 `web/js/script2.js`: mum mum çalışan, `eval` kullanmayan yorumlayıcı. `var`, `:=`, `if/else`, `for`, `while`, kendi fonksiyonlar, diziler/map, `request.security` (aynı sembolün üst zaman dilimi, son tamamlanan mum, yeniden boyama yok), `ta.*`, `math.*`, `str.*`, `color.*`, `plot/plotshape/plotchar/plotarrow/bgcolor/barcolor/hline/fill`, `label/line/box/table`, `strategy.entry` (işarete çevrilir).
 Pine çevirici önce hafif v1'i dener; tam çeviremezse kodu `//@beacon2` başlığıyla Formül 2'ye geçirir. Güvenlik: adım ve süre sınırı (4 sn), 30.000 karakter, nesne sınırı. Desteklenmeyenler: başka sembol verisi, kendi OHLC mumu çizimi, matrix, gerçek strateji backtest'i.
+
+## Özel zaman aralıkları (Pro)
+`data.js`: kimlik `c<n><birim>` (m, h, d, w, M). Binance'te olmayanlar (2G, 14G, 2H, 2A...) temel mumlardan sabit takvime göre birleştirilir; geçmiş mumlar yarın değişmez. Zaman çubuğundaki "+" ile eklenir (en çok 8), hesaba bağlı eşitlenir.
+
+## Eşitleme (web ↔ Telegram)
+`GET/PUT /api/me/sync` + `web/js/sync.js`. Göstergeler, çizimler, özel aralıklar ve takip listeleri hesapta tutulur; öğe bazında "en yeni kazanır", silinenler mezar taşıyla işaretlenir, sürüm çakışmasında (409) yeniden birleştirilir. Tablo `user_sync` açılışta kendiliğinden oluşur.
+
+## Çizim ve ölçüm araçları
+`web/js/draw.js`: trend, ışın, yatay/dikey çizgi, paralel kanal, Fibonacci, dikdörtgen, not, cetvel (geçici), risk/ödül pozisyonu. Zaman+fiyat ile saklanır (TF değişince yerinde kalır), mıknatıs, kilit, gizle, geri al, kopyala. Ücretsiz: trend, yatay çizgi, cetvel (en çok 8 çizim); diğerleri Pro.

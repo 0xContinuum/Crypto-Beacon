@@ -307,6 +307,42 @@ def create_app(S=None, db=None):
             raise ApiError(502, "Görsel gönderilemedi. Önce bota /start yazın, sonra tekrar deneyin.")
         return {"ok": True}
 
+    @route("/api/me/sync")
+    def sync_get(ctx):
+        """Cihazlar arası eşitleme: istemci son bildiği sürümü gönderir, değiştiyse paketi alır."""
+        uid = ctx.user["id"]
+        rate(uid, "syncg", 120, 600)
+        row = db.one("SELECT data, rev FROM user_sync WHERE user_id=?", (uid,))
+        rev = int(row["rev"]) if row else 0
+        try:
+            have = int(ctx.q.get("rev", "-1"))
+        except ValueError:
+            have = -1
+        if row and have == rev:
+            return {"rev": rev, "changed": False}
+        return {"rev": rev, "changed": True, "data": json.loads(row["data"]) if row else None}
+
+    @route("/api/me/sync", methods=("PUT",))
+    def sync_put(ctx):
+        uid = ctx.user["id"]
+        rate(uid, "syncp", 60, 600)
+        try:
+            data = C.sync_clean(ctx.body.get("data"))
+            base = int(ctx.body.get("base", 0))
+        except (ValueError, TypeError) as e:
+            raise ApiError(400, str(e))
+        with db.tx():
+            row = db.one("SELECT data, rev FROM user_sync WHERE user_id=?", (uid,))
+            cur = int(row["rev"]) if row else 0
+            if cur != base:
+                raise ApiError(409, "Başka bir cihaz daha yeni bir sürüm kaydetti", rev=cur, data=json.loads(row["data"]) if row else None)
+            blob = json.dumps(data, ensure_ascii=False)
+            if row:
+                db.x("UPDATE user_sync SET data=?, rev=?, updated_at=? WHERE user_id=?", (blob, cur + 1, now(), uid))
+            else:
+                db.x("INSERT INTO user_sync (user_id, data, rev, updated_at) VALUES (?,?,?,?)", (uid, blob, 1, now()))
+        return {"rev": cur + 1}
+
     @route("/api/me")
     def me(ctx):
         uid = ctx.user["id"]
@@ -855,7 +891,6 @@ def create_app(S=None, db=None):
     if S.bot_token and S.public_url and not S.dev_mode and not S.tg and not os.environ.get("VERCEL"):  # sunucusuz ortamda arka plan iş parçacığı yaşamaz: webhook elle kaydedilir
         threading.Thread(target=lambda: tg("setWebhook", {"url": S.public_url + "/tg/webhook", "secret_token": S.webhook_secret or None, "allowed_updates": ["message", "callback_query"]}), daemon=True).start()
     return app
- 
 
 
 def default_app():

@@ -34,7 +34,7 @@
     return { s: sym, n: NAME_OF.get(b) || b, kind: k, base: b, free: FREE.has(sym) };
   }
   const label = (sym) => { const m = meta(sym); return m.kind === 'index' ? sym.slice(1).replace('BTCD', 'BTC.D').replace('USDTD', 'USDT.D') : m.kind === 'perp' ? m.base + 'USDT.P' : sym + '/USDT'; };
-  const tfsFor = (sym) => (kindOf(sym) === 'index' ? ['1d', '1w'] : TFS);
+  const tfsFor = (sym, extra) => (kindOf(sym) === 'index' ? ['1d', '1w'] : extra && extra.length ? TFS.concat(extra) : TFS);
 
   /** Seçicideki liste: tür = 'spot' | 'perp' | 'index'. Boş sorguda ilk 100; sorguda tüm canlı pariteler de aranır. */
   function list(kind, q) {
@@ -107,6 +107,67 @@
       .filter((k) => Number.isFinite(k.c) && k.h >= k.l);
   }
 
+  /* ——— Özel zaman dilimleri: kimlik "c<n><birim>" (m dakika, h saat, d gün, w hafta, M ay). Binance'te yoksa temel mumlardan birleştirilir. ——— */
+  const NATIVE = { '1m': 6e4, '3m': 18e4, '5m': 3e5, '15m': 9e5, '30m': 18e5, '1h': 36e5, '2h': 72e5, '4h': 144e5, '6h': 216e5, '8h': 288e5, '12h': 432e5, '1d': 864e5, '3d': 2592e5, '1w': 6048e5, '1M': 2592e6 };
+  const UNIT_MS = { m: 6e4, h: 36e5, d: 864e5, w: 6048e5, M: 2592e6 }, UNIT_TR = { m: 'd', h: 's', d: 'G', w: 'H', M: 'A' };
+  const RANGE = { m: [1, 720], h: [1, 72], d: [2, 60], w: [2, 26], M: [1, 24] };
+  const CTF_MAX = 8;
+  const specCache = new Map();
+  function parseTf(id) {
+    if (specCache.has(id)) return specCache.get(id);
+    let r = null; const m = /^c(\d{1,3})([mhdwM])$/.exec(String(id));
+    if (m) {
+      const n = +m[1], u = m[2], [lo, hi] = RANGE[u];
+      const ms = n * UNIT_MS[u], std = TFS.some((t) => NATIVE[t] === ms);
+      if (n >= lo && n <= hi && !std) {
+        r = { id, n, u, ms, label: n + UNIT_TR[u], native: null, base: null, k: 1 };
+        const nat = Object.keys(NATIVE).find((x) => NATIVE[x] === ms && (u === 'M' ? x === '1M' : x !== '1M'));
+        if (nat) r.native = nat;
+        else if (u === 'M') { r.base = '1M'; r.k = n; }
+        else if (u === 'w') { r.base = '1w'; r.k = n; }
+        else if (u === 'd') { r.base = '1d'; r.k = n; }
+        else {
+          const cands = Object.keys(NATIVE).filter((x) => NATIVE[x] < (u === 'h' ? 864e5 : 36e5) && ms % NATIVE[x] === 0).sort((a, b) => NATIVE[b] - NATIVE[a]);
+          if (cands.length) { r.base = cands[0]; r.k = ms / NATIVE[cands[0]]; } else r = null;
+        }
+      }
+    }
+    specCache.set(id, r); return r;
+  }
+  const isCustomTf = (id) => typeof id === 'string' && id[0] === 'c' && !!parseTf(id);
+  const apiTf = (tf) => { const p = isCustomTf(tf) ? parseTf(tf) : null; return p ? p.native || p.base : tf; };
+  const monthEnd = (t) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1); };
+  /** Temel mumları n'li gruplara birleştirir. Gruplar sabit bir takvime oturur (geçmiş mumlar yarın değişmez). */
+  function aggregate(base, spec) {
+    const out = []; const wk = 6048e5, off = 4 * 864e5;
+    const keyOf = (t) => {
+      if (spec.u === 'M') { const d = new Date(t); return Math.floor((d.getUTCFullYear() * 12 + d.getUTCMonth()) / spec.n); }
+      if (spec.u === 'w') return Math.floor((t - off) / (spec.n * wk));
+      return Math.floor(t / spec.ms);
+    };
+    const startOf = (key) => (spec.u === 'M' ? Date.UTC(Math.floor((key * spec.n) / 12), (key * spec.n) % 12, 1) : spec.u === 'w' ? key * spec.n * wk + off : key * spec.ms);
+    const endOf = (key) => (spec.u === 'M' ? Date.UTC(Math.floor(((key + 1) * spec.n) / 12), ((key + 1) * spec.n) % 12, 1) : startOf(key) + (spec.u === 'w' ? spec.n * wk : spec.ms));
+    let cur = null, ck = null;
+    for (const k of base) {
+      const key = keyOf(k.t);
+      if (key !== ck) { if (cur) out.push(cur); ck = key; cur = { t: startOf(key), o: k.o, h: k.h, l: k.l, c: k.c, v: k.v, e: endOf(key), _first: k.t }; }
+      else { if (k.h > cur.h) cur.h = k.h; if (k.l < cur.l) cur.l = k.l; cur.c = k.c; cur.v += k.v; }
+    }
+    if (cur) out.push(cur);
+    if (out.length > 1 && out[0]._first > out[0].t + 1) out.shift(); // başlangıçta eksik kalan ilk grup
+    for (const k of out) delete k._first;
+    return out;
+  }
+  const withEnd = (arr, spec) => { if (spec.u === 'M') for (const k of arr) k.e = monthEnd(k.t); return arr; };
+  async function loadCustom(sym, tf, fresh) {
+    const spec = parseTf(tf);
+    if (spec.native) { const c = await fetchKlines(sym, spec.native, 1000); return withEnd(c, spec); }
+    const pages = Math.max(1, Math.min(6, Math.ceil((700 * spec.k) / 1000)));
+    let base = await loadLong(sym, spec.base, pages);
+    if (fresh !== false) { try { const tail = await fetchKlines(sym, spec.base, 5); base = base.slice(); for (const k of tail) { const l = base[base.length - 1]; if (k.t === l.t) base[base.length - 1] = k; else if (k.t > l.t) base.push(k); } } catch (e) { /* önbellekteki yeterli */ } }
+    return aggregate(base, spec);
+  }
+
   async function fetchKlines(sym, tf, limit) {
     if (kindOf(sym) === 'index') return fetchIndex(sym, tf);
     const R = route(sym); let lastErr;
@@ -114,7 +175,7 @@
       const host = R.hosts[(hostIdx + a) % R.hosts.length];
       const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 9000);
       try {
-        const r = await fetch(`${host}${R.path}?symbol=${R.base}USDT&interval=${tf}&limit=${limit}`, { signal: ctl.signal });
+        const r = await fetch(`${host}${R.path}?symbol=${R.base}USDT&interval=${apiTf(tf)}&limit=${limit}`, { signal: ctl.signal });
         clearTimeout(to);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const rows = await r.json();
@@ -130,7 +191,7 @@
   async function load(sym, tf, maxAgeMs = 0) {
     const key = sym + '|' + tf, c = cache.get(key);
     if (c && Date.now() - c.at < maxAgeMs) return c.candles;
-    const candles = await fetchKlines(sym, tf, 1000);
+    const candles = isCustomTf(tf) ? await loadCustom(sym, tf) : await fetchKlines(sym, tf, 1000);
     cache.set(key, { candles, at: Date.now() });
     return candles;
   }
@@ -166,6 +227,7 @@
     const key = sym + '|' + tf, c = cache.get(key);
     if (!c) return load(sym, tf);
     if (kindOf(sym) === 'index') { if (Date.now() - c.at < 300000) return c.candles; return load(sym, tf); }
+    if (isCustomTf(tf)) { const cc = await loadCustom(sym, tf); cache.set(key, { candles: cc, at: Date.now() }); return cc; }
     const fresh = await fetchKlines(sym, tf, 4);
     const arr = c.candles.slice();
     for (const k of fresh) {
@@ -193,8 +255,8 @@
   /** Son kapanmış mum sayısı: son mum henüz oluşuyorsa hariç tutulur. */
   function closedCount(candles, tfMs, now = Date.now()) {
     const n = candles.length;
-    return candles[n - 1].t + tfMs > now ? n - 1 : n;
+    const l = candles[n - 1]; return (l.e || l.t + tfMs) > now ? n - 1 : n;
   }
 
-  root.BeaconData = { indexesOn: () => INDEX_ON, COINS, TOP, INDEXES, meta, label, list, tfsFor, kindOf, loadCatalog, catalog: cat, weekly, TFS, load, loadLong, refresh, loadMany, closedCount, _cache: cache };
+  root.BeaconData = { indexesOn: () => INDEX_ON, COINS, TOP, INDEXES, meta, label, list, tfsFor, kindOf, parseTf, isCustomTf, aggregate, CTF_MAX, UNIT_TR, RANGE, loadCatalog, catalog: cat, weekly, TFS, load, loadLong, refresh, loadMany, closedCount, _cache: cache };
 })(typeof self !== 'undefined' ? self : this);
