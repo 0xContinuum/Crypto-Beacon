@@ -154,6 +154,5 @@ Pine çevirici önce hafif v1'i dener; tam çeviremezse kodu `//@beacon2` başl�
 - **Funding Rates** (piyasa, Pro): Binance BTCUSDT vadeli funding geçmişi (2019-09'dan, sayfalı), 7 günlük ortalama, altta BTC fiyatı; aşırı funding sonrası getiriler betimleyici olarak gösterilir.
 - **Döngü Dip/Tepe Bölgeleri** (piyasa, Pro): fiyat tabanlı "döngü ısısı" (0-100); önceki döngülerin gerçek tepe/dipleri otomatik bulunup bölgelerle karşılaştırılır.
 - Örnek kullanıcı göstergesi: `tests/fixtures/beacon/Denge_Hatti.beacon.txt` (ƒx Göstergelerim'e yapıştırın).
-- **Döngü Dip/Tepe Bölgeleri** artık BTC/ETH/XRP/SOL seçilebilir (kart içi düğmeler); gerçek tepe/dipler her coinde aynı kuralla otomatik bulunur (±365 günün zirvesi ve ardından ≥%45 düşüş).
-- **CVDD** (piyasa, Pro): TradingView kodundaki formül, veri Coin Metrics topluluk API'sinden (yedek: GitHub CSV). Erişilemezse "Veri yok" kartı gösterilir.
+- **Seviye Değme Olasılığı** (piyasa, Pro): BTC'nin 7/14/30 günde belirli bir seviyeye (fitil dahil) dokunma olasılığı; güvenilirlik sınaması kartta.
 - Piyasa kartlarının hepsinde imleçle tarih/değer ipucu vardır.

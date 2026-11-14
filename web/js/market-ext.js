@@ -292,57 +292,49 @@
     return { heat, topZ, botZ, cycles, TOP, BOT, now: heat[last], precTop: within(topZ, ext('top')), precBot: within(botZ, ext('bot')), share: { top: topZ.reduce((s2, [a, b]) => s2 + b - a + 1, 0) / Math.max(1, covered), bot: botZ.reduce((s2, [a, b]) => s2 + b - a + 1, 0) / Math.max(1, covered) }, price: c[last], nowZone: Number.isFinite(heat[last]) ? (heat[last] >= TOP ? 'top' : heat[last] <= BOT ? 'bot' : 'mid') : null };
   }
 
-  /* ——— CVDD (Coin Value Days Destroyed) ———
-     Formül, kullanıcının TradingView kodundakiyle aynıdır:
-       CVDD = (Gerçekleşmiş Değer − 500 günlük ort. transfer hacmi) / 22.000.000
-       Dip çizgisi = CVDD × 1,2   |   Tepe uzantısı = CVDD × 10^(−8,1775e−13 × zaman(ms) + 1,965805965)
-     Veri: Coin Metrics topluluk verisi (anahtarsız): CapRealUSD (gerçekleşmiş değer) ve TxTfrValAdjUSD (düzeltilmiş transfer hacmi, USD). */
-  const CM_API = ['https://community-api.coinmetrics.io/v4', 'https://api.coinmetrics.io/v4'], CM_CSV = 'https://raw.githubusercontent.com/coinmetrics/data/master/csv/btc.csv';
-  async function loadCvddData() {
-    const get = async (url) => { const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 15000); try { const r = await fetch(url, { signal: ctl.signal }); clearTimeout(to); return r.ok ? r : null; } catch (e) { clearTimeout(to); return null; } };
-    for (const base of CM_API) {
-      const rows = []; let url = `${base}/timeseries/asset-metrics?assets=btc&metrics=CapRealUSD,TxTfrValAdjUSD&frequency=1d&page_size=10000&start_time=2011-01-01`, guard = 0;
-      while (url && guard++ < 6) { const r = await get(url); if (!r) { rows.length = 0; break; } const j = await r.json(); for (const x of j.data || []) { const m = parseFloat(x.CapRealUSD), v = parseFloat(x.TxTfrValAdjUSD); rows.push({ t: Date.parse(x.time), mcr: Number.isFinite(m) ? m : NaN, tv: Number.isFinite(v) ? v : NaN }); } url = j.next_page_url || ''; }
-      if (rows.length > 1500) return rows;
+
+  /* ——— Seviye Değme Olasılığı: "BTC önümüzdeki 7/14/30 günde şu seviyeye dokunur mu?" ———
+     Düşüş Tabanı ile aynı oynaklık tahminini (HAR, genişleyen pencere) ve geçmiş standartlaştırılmış uç hareketlerin dağılımını kullanır;
+     fakat tek bir yüzdelik yerine bütün seviyeler için olasılık eğrisi verir (ör. "−%15'e değme olasılığı %12").
+     Güvenilirlik sınaması: her gün için o gün bilinenle yapılan olasılık, sonradan gerçekleşen değme sıklığıyla karşılaştırılır. */
+  const TOUCH_LV = [-30, -20, -10, -5, 5, 10, 20, 30];
+  function touchModel(cs, H, wantLevels) {
+    const n = cs.length, LN2 = Math.log(2), MINTRAIN = 250, W0 = 89, K = 5, c = cs.map((k) => k.c);
+    const v = cs.map((k) => { const r = Math.log(k.h / Math.max(k.l, 1e-12)); return Math.max(r * r / (4 * LN2), 1e-10); });
+    const cum = [0]; for (let i = 0; i < n; i++) cum.push(cum[i] + v[i]);
+    const rv = (i, k) => Math.sqrt((cum[i + 1] - cum[i + 1 - k]) / k), feat = (i) => [1, Math.log(rv(i, 1)), Math.log(rv(i, 7)), Math.log(rv(i, 30)), Math.log(rv(i, 90))], yOf = (i) => Math.log(Math.sqrt((cum[i + H + 1] - cum[i + 1]) / H));
+    const XtX = Array.from({ length: K }, () => new Array(K).fill(0)), Xty = new Array(K).fill(0), yhat = new Array(n).fill(NaN), sD = [], sU = []; let rows = 0;
+    const ins = (arr, z) => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < z) lo = m + 1; else hi = m; } arr.splice(lo, 0, z); };
+    const cntLE = (arr, z) => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] <= z) lo = m + 1; else hi = m; } return lo; }; // ≤ z olanların sayısı
+    const ext = (i) => { let lo = Infinity, hi = -Infinity; for (let j = i + 1; j <= i + H; j++) { if (cs[j].l < lo) lo = cs[j].l; if (cs[j].h > hi) hi = cs[j].h; } return [Math.log(Math.min(lo, c[i]) / c[i]), Math.log(Math.max(hi, c[i]) / c[i])]; };
+    const pDown = (sc, d) => cntLE(sD, Math.log(1 + d / 100) / sc) / sD.length;               // d<0: en düşük ≤ seviye olasılığı
+    const pUp = (sc, u) => { const z = Math.log(1 + u / 100) / sc; let lo = 0, hi = sU.length; while (lo < hi) { const m = (lo + hi) >> 1; if (sU[m] < z) lo = m + 1; else hi = m; } return (sU.length - lo) / sU.length; };
+    const cal = wantLevels ? TOUCH_LV.map(() => ({ p: 0, r: 0, k: 0 })) : null; let last = null;
+    for (let t = W0; t < n; t++) {
+      const s2 = t - H;
+      if (s2 >= W0) { const x = feat(s2), y = yOf(s2); rows++; for (let a = 0; a < K; a++) { Xty[a] += x[a] * y; for (let b = 0; b < K; b++) XtX[a][b] += x[a] * x[b]; } if (Number.isFinite(yhat[s2])) { const [d, u] = ext(s2), sc = Math.exp(yhat[s2]) * Math.sqrt(H); ins(sD, d / sc); ins(sU, u / sc); } }
+      if (rows >= MINTRAIN) { const A = XtX.map((r, i) => r.map((x, j) => x + (i === j && i > 0 ? 1e-6 : 0))), beta = solve4(A, Xty); if (beta) yhat[t] = feat(t).reduce((a, b, i) => a + b * beta[i], 0); }
+      if (Number.isFinite(yhat[t]) && sD.length >= 120) {
+        const sc = Math.exp(yhat[t]) * Math.sqrt(H);
+        if (cal && t + H < n) { const [d, u] = ext(t); TOUCH_LV.forEach((L, k) => { const pr = L < 0 ? pDown(sc, L) : pUp(sc, L), hit = L < 0 ? (d <= Math.log(1 + L / 100) ? 1 : 0) : (u >= Math.log(1 + L / 100) ? 1 : 0); cal[k].p += pr; cal[k].r += hit; cal[k].k++; }); }
+        if (t === n - 1) last = { sc, pDown: (d) => pDown(sc, d), pUp: (u) => pUp(sc, u) };
+      }
     }
-    const r = await get(CM_CSV); if (r) { // yedek: GitHub'daki topluluk CSV'si
-      const txt = await r.text(), lines = txt.split(/\r?\n/), h = lines[0].split(','), ti = h.indexOf('time'), mi = h.indexOf('CapRealUSD'), vi = h.indexOf('TxTfrValAdjUSD'); if (ti < 0 || mi < 0 || vi < 0) return null;
-      const rows = []; for (let i = 1; i < lines.length; i++) { const f = lines[i].split(','); if (f.length < h.length) continue; const m = parseFloat(f[mi]), v = parseFloat(f[vi]); rows.push({ t: Date.parse(f[ti]), mcr: Number.isFinite(m) ? m : NaN, tv: Number.isFinite(v) ? v : NaN }); } if (rows.length > 1500) return rows; }
-    return null;
+    return { H, yhat, last, cal: cal ? cal.map((x, k) => ({ L: TOUCH_LV[k], pred: x.p / x.k, real: x.r / x.k, n: x.k })) : null, nSamples: sD.length };
   }
-  function cvddGauge(cs, rows, opt) {
-    const SH = (opt && opt.shift) || 120, SL = (opt && opt.slope) || 100, IC = (opt && opt.icpt) || 100, n = cs.length, day = (x) => Math.floor(x / 864e5);
-    const byDay = new Map(rows.map((r) => [day(r.t), r])); // zincir üstü seri: 500 günlük ortalama için takvim sırası
-    const ord = rows.slice().sort((a, b) => a.t - b.t), sma = new Map(); let sum = 0, cnt = 0; const q = [];
-    for (const r of ord) { if (Number.isFinite(r.tv)) { q.push(r.tv); sum += r.tv; cnt++; if (q.length > 500) { sum -= q.shift(); cnt--; } } if (cnt >= 500) sma.set(day(r.t), sum / cnt); }
-    const cv = new Array(n).fill(NaN), bot = cv.slice(), top = cv.slice();
-    for (let i = 0; i < n; i++) { const d = day(cs[i].t), r = byDay.get(d), tv = sma.get(d); if (!r || !Number.isFinite(r.mcr) || tv == null) continue; const v = (r.mcr - tv) / 22e6; if (!(v > 0)) continue; cv[i] = v; bot[i] = v * SH / 100; top[i] = v * Math.pow(10, -8.1775e-13 * (SL / 100) * cs[i].t + 1.965805965 * (IC / 100)); }
-    const zT = [], zB = []; const zones = (pred, out) => { let a = -1; for (let i = 0; i <= n; i++) { const on = i < n && Number.isFinite(cv[i]) && pred(i); if (on && a < 0) a = i; if (!on && a >= 0) { out.push([a, i - 1]); a = -1; } } };
-    zones((i) => cs[i].h >= top[i], zT); zones((i) => cs[i].l <= bot[i], zB);
-    const last = (() => { for (let i = n - 1; i >= 0; i--) if (Number.isFinite(cv[i])) return i; return -1; })();
-    const cnts = (zs) => zs.reduce((s2, [a, b]) => s2 + b - a + 1, 0), cov = cv.filter(Number.isFinite).length;
-    return { cvdd: cv, bot, top, zT, zB, last, price: last >= 0 ? cs[last].c : NaN, ratio: last >= 0 ? cs[last].c / cv[last] : NaN, state: last < 0 ? null : cs[last].h >= top[last] ? 'top' : cs[last].l <= bot[last] ? 'bot' : 'mid', days: { cov, top: cnts(zT), bot: cnts(zB) }, params: { SH, SL, IC } };
-  }
-  function cvddCard(cg, t, cc, ctx, cyc) {
-    const { xMin, beam, bull, bear } = ctx, P = (x) => '$' + Math.round(x).toLocaleString('tr-TR'), N = t.length;
-    if (!cg || cg.last < 0) return null; const L = cg.last, st = cg.state, badge = st === 'top' ? 'Tepe bölgesi' : st === 'bot' ? 'Dip bölgesi' : cg.price < cg.cvdd[L] * 1.5 ? 'Dibe yakın' : 'Orta bölge', tn = st === 'top' ? 'down' : st === 'bot' ? 'up' : 'flat';
-    // gerçek uçlara göre karne: tepeler üst uzantıya, dipler alt çizgiye ne kadar yaklaştı
-    const rep = (cyc || []).map((cy) => { const dt = (i) => new Date(t[i]).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' }); const a = Number.isFinite(cg.top[cy.top]) ? `${dt(cy.top)} tepesi ${P(cy.topP)}: üst uzantının ${fmt2(cy.topP / cg.top[cy.top])}×'i` : null, b = Number.isFinite(cg.bot[cy.bot]) ? `${dt(cy.bot)} dibi ${P(cy.botP)}: alt çizginin ${fmt2(cy.botP / cg.bot[cy.bot])}×'i` : null; return [a, b].filter(Boolean).join('; '); }).filter(Boolean).join(' | ');
-    return {
-      id: 'cvdd', title: 'CVDD · Zincir Üstü Dip/Tepe', value: P(cg.cvdd[L]), unit: 'CVDD · fiyat ' + fmt2(cg.ratio) + '× CVDD', badge, tone: tn,
-      info: `CVDD (Coin Value Days Destroyed) Bitcoin'in gerçekleşmiş değerinden (coinlerin son hareket ettikleri fiyattan toplam değeri), uzun dönem ortalama transfer hacmini çıkarıp arzla bölerek bir "adil dip" fiyatı üretir. Üç çizgi: CVDD (yeşil), CVDD × ${cg.params.SH / 100} dip çizgisi (mor), zamanla alçalan bir çarpanla çizilen tepe uzantısı (pembe). Günlük en düşük fiyat dip çizgisine değerse yeşil, günlük en yüksek fiyat tepe uzantısına değerse kırmızı boyanır. Şu an CVDD ${P(cg.cvdd[L])}, dip çizgisi ${P(cg.bot[L])}, tepe uzantısı ${P(cg.top[L])}; fiyat ${P(cg.price)}. Geçmişte dip bölgesi ${cg.days.bot} gün, tepe bölgesi ${cg.days.top} gün boyandı (${cg.days.cov} günün). ${rep ? 'Gerçek uçlarla karşılaştırma: ' + rep + '. ' : ''}Bu bir yön tahmini değil, zincir üstü verisiyle uç bölgelerin haritasıdır. Veri Coin Metrics topluluk verisinden (CapRealUSD ve TxTfrValAdjUSD) gelir; transfer hacmi TradingView'daki Glassnode serisiyle birebir aynı olmayabileceğinden değerler orijinal TradingView çizgisinden sapabilir. Bölgeler az sayıda döngüye dayanır; geçmişte değen uçların gelecekte de değeceği garanti değildir.`,
-      cfg: { xMin, log: true, fmt: (v) => P(v).replace('$', ''), series: [
-        { nm: 'BTC', f: (v) => P(v), x: t, y: cc, color: 'rgba(233,238,248,.9)', w: 1.3 },
-        { nm: 'Tepe uzantısı', f: (v) => P(v), x: t, y: cg.top, color: '#c727e3', w: 1.4 },
-        { nm: 'CVDD', f: (v) => P(v), x: t, y: cg.cvdd, color: '#27e3c0', w: 1.6 },
-        { nm: 'Dip çizgisi', f: (v) => P(v), x: t, y: cg.bot, color: '#4920ff', w: 1.4 }],
-        zones: cg.zT.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(255,99,132,.25)' })).concat(cg.zB.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(53,214,160,.25)' }))), now: { x: t[N - 1], y: cc[N - 1] } },
-      legend: [['Fiyat', 'rgba(233,238,248,.9)'], ['Tepe uzantısı', '#c727e3'], ['CVDD', '#27e3c0'], ['Dip çizgisi', '#4920ff']] };
+  function touchMap(cs) {
+    const Hs = [7, 14, 30], ms = Hs.map((H) => touchModel(cs, H, true)), price = cs[cs.length - 1].c; if (!ms[2].last) return null;
+    const grid = []; for (let d = -40; d <= 60; d++) grid.push(d);
+    const curves = ms.map((m) => grid.map((d) => (d === 0 ? 1 : m.last ? (d < 0 ? m.last.pDown(d) : m.last.pUp(d)) : NaN)));
+    const at = (m, L) => (L < 0 ? m.last.pDown(L) : m.last.pUp(L)), key = ms[2], sig = Math.exp(key.yhat[cs.length - 1]) * Math.sqrt(30);
+    const hist = []; for (let i = Math.max(0, cs.length - 365); i < cs.length; i++) if (Number.isFinite(key.yhat[i])) hist.push(key.yhat[i]); const pct = hist.length > 30 ? (hist.filter((x) => x <= key.yhat[cs.length - 1]).length / hist.length) * 100 : NaN;
+    const gap = Math.max(...ms.flatMap((m) => m.cal.map((x) => Math.abs(x.pred - x.real)))), gapAvg = mean(ms.flatMap((m) => m.cal.map((x) => Math.abs(x.pred - x.real))));
+    return { Hs, grid, curves, price, ms, at: (hi, L) => at(ms[hi], L), pct, gap, gapAvg, sig };
   }
 
   function compute(cs) {
     if (!cs || cs.length < 400) return null;
-    return { t: cs.map((k) => k.t), bow: bowTension(cs), storm: stormGauge(cs), drop: dropGauge(cs), zone: zoneGauge(cs), funding: null, fund: null };
+    return { t: cs.map((k) => k.t), bow: bowTension(cs), storm: stormGauge(cs), drop: dropGauge(cs), zone: zoneGauge(cs), touch: touchMap(cs), funding: null, fund: null };
   }
 
   /* ——— ücretsiz funding verisi (Binance vadeli genel API; erişilemezse null) ——— */
@@ -367,7 +359,7 @@
       const lines = zg.cycles.map((cy) => { const tp = cy.topHit.na ? `${dstr2(cy.top)} tepesi (${P(cy.topP)}): ölçü için geçmiş veri yetmedi` : `${dstr2(cy.top)} tepesi (${P(cy.topP)}): ısı ${Math.round(cy.topHeat)}, ${cy.topHit.hit ? 'tepe bölgesi tepeden ' + Math.max(0, cy.topHit.lead) + ' gün önce başlayıp tepeyi kapsadı' : 'tepe bölgesi işaretlemedi'}`, bt = `${dstr2(cy.bot)} dibi (${P(cy.botP)}): ısı ${Math.round(cy.botHeat)}, ${cy.botHit.hit ? 'dip bölgesi dipten ' + Math.max(0, cy.botHit.lead) + ' gün önce başlayıp dibi kapsadı' : 'dip bölgesi işaretlemedi'}`; return tp + '; ' + bt; }).join(' | ');
       const pr = (v) => (Number.isFinite(v) ? '%' + Math.round(v * 100) : '–');
       return {
-        id: 'zone', coin, title: 'Döngü Dip/Tepe Bölgeleri · ' + coin, value: Math.round(zg.now) + '/100', unit: 'döngü ısısı', badge, tone: tn,
+        id: 'zone', coin, title: 'Döngü Dip/Tepe Bölgeleri', value: Math.round(zg.now) + '/100', unit: 'döngü ısısı', badge, tone: tn,
         info: `${coin} fiyatının son 4 yıllık döngüsünde nerede durduğunu 0-100 ile ölçer: 100 tepeye, 0 dibe yakın demektir. Üç fiyat ölçüsünün (200 gün ve 365 gün ortalamalarına göre uzaklık, son 4 yılın zirvesinden uzaklık) kendi son 4 yıllık geçmişindeki yüzdeliklerinin ortalamasıdır; her gün yalnızca o güne kadarki veri kullanıldığı için grafik, göstergenin o gün gerçekte ne göstereceğidir (geriye dönük süslenmedi). ${zg.TOP} üstü kırmızı tepe bölgesi, ${zg.BOT} altı yeşil dip bölgesi olarak boyanır; kesikli çizgiler yarılanma döngülerinde otomatik bulunan gerçek tepe ve diplerdir. Önceki döngüler: ${lines || 'veride tamamlanmış döngü bulunamadı'}. Bölge günlerinin gerçek uca ±90 gün yakın olanı: tepe ${pr(zg.precTop)}, dip ${pr(zg.precBot)} (günlerin yaklaşık %${Math.round(zg.share.top * 100)}'i tepe, %${Math.round(zg.share.bot * 100)}'i dip bölgesinde). Bölgeler uç noktayı tam gün olarak değil bölge olarak yakalar ve erken başlayabilir; her döngü farklı olduğundan, yalnızca iki tamamlanmış döngü vardır. Şu an ısı ${Math.round(zg.now)}. Bu bir yön tahmini değil, döngü içindeki konum ölçüsüdür.`,
         cfg: { xMin, log: true, fmt: (v) => P(v).replace('$', ''), series: [{ nm: coin, f: (v) => P(v), x: t, y: cc, color: 'rgba(233,238,248,.9)', w: 1.3 }],
           zones: zg.topZ.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(255,99,132,.22)' })).concat(zg.botZ.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(53,214,160,.22)' }))),
@@ -427,6 +419,21 @@
     // 1c) Döngü Dip/Tepe Bölgeleri
     { const zc = zoneCard(X.zone, t, ctx.c, ctx, 'BTC'); if (zc) out.push(zc); }
 
+    // 1d) Seviye Değme Olasılığı
+    const tm = X.touch;
+    if (tm) {
+      const P = (x) => '$' + Math.round(x).toLocaleString('tr-TR'), pc = (v) => '%' + Math.round(v * 100), pct = tm.pct, badge = !Number.isFinite(pct) ? '–' : pct < 25 ? 'Sakin' : pct < 60 ? 'Normal' : pct < 85 ? 'Hareketli' : 'Fırtına';
+      const dn = tm.at(2, -10), up = tm.at(2, 10), row = (L) => `${L > 0 ? '+' : '−'}%${Math.abs(L)} (${P(tm.price * (1 + L / 100))}): 7 günde ${pc(tm.at(0, L))}, 14 günde ${pc(tm.at(1, L))}, 30 günde ${pc(tm.at(2, L))}`;
+      const calTxt = tm.ms[2].cal.map((x) => `${x.L > 0 ? '+' : '−'}%${Math.abs(x.L)}: tahmin ${pc(x.pred)}, gerçekleşen ${pc(x.real)}`).join('; ');
+      out.push({
+        id: 'touch', title: 'Seviye Değme Olasılığı', value: '↓' + pc(dn) + ' · ↑' + pc(up), unit: '30G · ±%10 değme', badge, tone: badge === 'Fırtına' ? 'down' : badge === 'Hareketli' ? 'warn' : 'flat',
+        info: `Fiyatın önümüzdeki 7, 14 ve 30 gün içinde, bugünkü fiyattan (${P(tm.price)}) belli bir mesafedeki seviyeye HERHANGİ BİR ANDA dokunma olasılığıdır; kapanış değil, mum fitili de sayılır. Yönü söylemez: yukarı ve aşağı seviyeler ayrı ayrı olasılıklandırılır. Yatay eksen mesafe (% olarak), dikey eksen olasılıktır; kesikli çizgi %50. Örnek seviyeler: ${[-20, -10, -5, 5, 10, 20].map(row).join('. ')}. Yöntem: Düşüş Tabanı ile aynı oynaklık tahmini (1/7/30/90 günlük oynaklıktan regresyon, her gün yalnızca o güne kadarki veriyle) ve geçmiş uç hareketlerin dağılımı. Güvenilirlik sınaması (30 günlük ufuk, ${tm.ms[2].cal[0].n} gün, her gün o günkü bilgiyle): ${calTxt}. Ortalama sapma ${Math.round(tm.gapAvg * 100)} puan, en büyük sapma ${Math.round(tm.gap * 100)} puan. Sınama pencereleri örtüştüğü için tek tek seviyelerde birkaç puanlık sapma gürültüdür; uzak seviyelerde olay az olduğundan tahminler daha da gürültülüdür; ani haber şokları ve rejim değişimleri model dışıdır. Bu bir risk haritasıdır, al-sat sinyali değildir.`,
+        cfg: { xMin: -40, fmt: (v) => Math.round(v * 100) + '%', xl: (x) => (x > 0 ? '+' : x < 0 ? '−' : '') + '%' + Math.abs(Math.round(x)) + ' · ' + P(tm.price * (1 + x / 100)), fixX: true,
+          series: [{ nm: '30 günde', f: (v) => '%' + Math.round(v * 100), x: tm.grid, y: tm.curves[2], color: beam, w: 2 }, { nm: '14 günde', f: (v) => '%' + Math.round(v * 100), x: tm.grid, y: tm.curves[1], color: 'rgba(233,238,248,.75)', w: 1.4 }, { nm: '7 günde', f: (v) => '%' + Math.round(v * 100), x: tm.grid, y: tm.curves[0], color: 'rgba(233,238,248,.4)', w: 1.2 }],
+          refs: [{ y: 0.5, color: 'rgba(233,238,248,.3)', label: '50' }, { y: 0.1, color: 'rgba(233,238,248,.2)', label: '10' }], marks: [{ x: 0, color: 'rgba(233,238,248,.45)' }] },
+        legend: [['30 günde', beam], ['14 günde', 'rgba(233,238,248,.75)'], ['7 günde', 'rgba(233,238,248,.4)']] });
+    }
+
     // 2) Yay Gerilimi (varsayılan kapalı: sentetik sınamada iddiası tutmadı; ctx.showBow ile açılır)
     if (!ctx.showBow) return out;
     const i = N - 1, now = bw.tension[i], s = bw.stats, f = X.funding;
@@ -445,5 +452,5 @@
     return out;
   }
 
-  return { compute, cards, zoneCard, cvddCard, cvddGauge, loadCvddData, loadFunding, loadFundingSeries, fundDaily, fundStats, zoneGauge, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
+  return { compute, cards, zoneCard, touchMap, loadFunding, loadFundingSeries, fundDaily, fundStats, zoneGauge, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
 });
