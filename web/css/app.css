@@ -433,3 +433,7 @@ body.fsmode { overflow: hidden; }
 .dbtn.on { color: var(--beam); }
 .dbtn .dash { display: block; width: 18px; border-top: 2px dashed currentColor; }
 @media (max-width: 480px) { .dbar { left: 50px; right: 6px; margin: 0; width: auto; max-width: none; } }
+
+.zcoins { display: flex; gap: 6px; margin: 8px 0 2px; }
+.zcoins button { font: 600 12px/1 var(--font); padding: 6px 11px; border-radius: 999px; border: 1px solid var(--rule); background: transparent; color: var(--mist); cursor: pointer; }
+.zcoins button[aria-pressed="true"] { color: var(--beam); border-color: var(--beam); background: rgba(255, 194, 92, .1); }

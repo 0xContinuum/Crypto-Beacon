@@ -276,28 +276,68 @@
     // bölgeler (ardışık günler birleştirilir)
     const zones = (pred) => { const z = []; let a = -1; for (let i = 0; i <= n; i++) { const on = i < n && Number.isFinite(heat[i]) && pred(heat[i]); if (on && a < 0) a = i; if (!on && a >= 0) { z.push([a, i - 1]); a = -1; } } return z; };
     const topZ = zones((h) => h >= TOP), botZ = zones((h) => h <= BOT);
-    // gerçek tepe/dipler: tamamlanmış yarılanma döngüleri
-    const cycles = []; const dayOf = (t) => t;
-    for (let k = 1; k + 1 < HALVINGS.length; k++) {
-      const a = HALVINGS[k], b = HALVINGS[k + 1]; if (cs[0].t > a - 200 * 864e5 && k === 1) { /* 2016 döngüsü veri dışı */ }
-      let ti = -1, hh = 0; for (let i = 0; i < n; i++) if (cs[i].t >= a && cs[i].t < b && cs[i].h > hh) { hh = cs[i].h; ti = i; }
-      if (ti < 0 || cs[0].t > a) continue; // döngü başı veride yoksa atla
-      let bi = -1, ll = Infinity; for (let i = ti; i < n && cs[i].t <= cs[ti].t + 540 * 864e5; i++) if (cs[i].l < ll) { ll = cs[i].l; bi = i; }
-      if (bi < 0) continue;
-      const near = (zs, i, before, after) => { for (const [x, y] of zs) if (y >= i - before && x <= i + after) return { hit: true, lead: i - Math.max(x, i - before) }; return { hit: false, lead: NaN }; };
-      cycles.push({ top: ti, bot: bi, topP: cs[ti].h, botP: cs[bi].l, topHeat: heat[ti], botHeat: heat[bi], topHit: near(topZ, ti, 90, 20), botHit: near(botZ, bi, 90, 20) });
-    }
-    // başka bir bakış: son halving öncesi tamamlanmış döngü yoksa 2017 tepe/dip için de dene (veri 2017-08'de başlar)
-    if (cs[0].t > HALVINGS[1] && cs[0].t < HALVINGS[2]) {
-      const a = cs[0].t, b = HALVINGS[2]; let ti = -1, hh = 0; for (let i = 0; i < n; i++) if (cs[i].t >= a && cs[i].t < b && cs[i].h > hh) { hh = cs[i].h; ti = i; }
-      if (ti > 0) { let bi = -1, ll = Infinity; for (let i = ti; i < n && cs[i].t <= cs[ti].t + 540 * 864e5; i++) if (cs[i].l < ll) { ll = cs[i].l; bi = i; }
-        const near = (zs, i, before, after) => { for (const [x, y] of zs) if (y >= i - before && x <= i + after) return { hit: true, lead: i - Math.max(x, i - before) }; return { hit: false, lead: NaN }; };
-        if (bi > 0 && Number.isFinite(heat[bi])) cycles.unshift({ top: ti, bot: bi, topP: cs[ti].h, botP: cs[bi].l, topHeat: heat[ti], botHeat: heat[bi], topHit: Number.isFinite(heat[ti]) ? near(topZ, ti, 90, 20) : { hit: false, lead: NaN, na: true }, botHit: near(botZ, bi, 90, 20) }); }
+    // gerçek tepe/dipler: ±365 günün en yükseği olup ardından 540 gün içinde en az %45 düşen noktalar (her coin için aynı kural), dip: o tepeden sonraki en düşük
+    const cycles = [], W2 = 365, near = (zs, i, before, after) => { for (const [x, y] of zs) if (y >= i - before && x <= i + after) return { hit: true, lead: i - Math.max(x, i - before) }; return { hit: false, lead: NaN }; };
+    let lastTop = -1e9;
+    for (let i = 0; i + W2 <= n - 1; i++) {
+      if (i - lastTop < W2) continue; let ok = true; for (let j = Math.max(0, i - W2); j <= i + W2; j++) if (cs[j].h > cs[i].h) { ok = false; break; } if (!ok) continue;
+      let bi = -1, ll = Infinity; for (let j = i; j < n && j <= i + 540; j++) if (cs[j].l < ll) { ll = cs[j].l; bi = j; }
+      if (bi < 0 || ll > 0.55 * cs[i].h) continue; lastTop = i;
+      const hT = Number.isFinite(heat[i]), hB = Number.isFinite(heat[bi]); if (!hT && !hB) continue;
+      cycles.push({ top: i, bot: bi, topP: cs[i].h, botP: cs[bi].l, topHeat: heat[i], botHeat: heat[bi], topHit: hT ? near(topZ, i, 90, 20) : { hit: false, lead: NaN, na: true }, botHit: hB ? near(botZ, bi, 90, 20) : { hit: false, lead: NaN, na: true } });
     }
     // kesinlik: bölge günlerinin kaçı gerçek uca ±90 gün yakın
-    const ext = (key) => cycles.map((cy) => cy[key]), within = (zs, pts) => { let tot = 0, ok = 0; for (const [x, y] of zs) for (let i = x; i <= y; i++) { tot++; if (pts.some((p) => Math.abs(i - p) <= 90)) ok++; } return tot ? ok / tot : NaN; };
+    const ext = (key) => cycles.filter((cy) => !(key === 'top' ? cy.topHit.na : cy.botHit.na)).map((cy) => cy[key]), within = (zs, pts) => { let tot = 0, ok = 0; for (const [x, y] of zs) for (let i = x; i <= y; i++) { tot++; if (pts.some((p) => Math.abs(i - p) <= 90)) ok++; } return tot ? ok / tot : NaN; };
     const covered = heat.filter(Number.isFinite).length, last = n - 1;
     return { heat, topZ, botZ, cycles, TOP, BOT, now: heat[last], precTop: within(topZ, ext('top')), precBot: within(botZ, ext('bot')), share: { top: topZ.reduce((s2, [a, b]) => s2 + b - a + 1, 0) / Math.max(1, covered), bot: botZ.reduce((s2, [a, b]) => s2 + b - a + 1, 0) / Math.max(1, covered) }, price: c[last], nowZone: Number.isFinite(heat[last]) ? (heat[last] >= TOP ? 'top' : heat[last] <= BOT ? 'bot' : 'mid') : null };
+  }
+
+  /* ——— CVDD (Coin Value Days Destroyed) ———
+     Formül, kullanıcının TradingView kodundakiyle aynıdır:
+       CVDD = (Gerçekleşmiş Değer − 500 günlük ort. transfer hacmi) / 22.000.000
+       Dip çizgisi = CVDD × 1,2   |   Tepe uzantısı = CVDD × 10^(−8,1775e−13 × zaman(ms) + 1,965805965)
+     Veri: Coin Metrics topluluk verisi (anahtarsız): CapRealUSD (gerçekleşmiş değer) ve TxTfrValAdjUSD (düzeltilmiş transfer hacmi, USD). */
+  const CM_API = ['https://community-api.coinmetrics.io/v4', 'https://api.coinmetrics.io/v4'], CM_CSV = 'https://raw.githubusercontent.com/coinmetrics/data/master/csv/btc.csv';
+  async function loadCvddData() {
+    const get = async (url) => { const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 15000); try { const r = await fetch(url, { signal: ctl.signal }); clearTimeout(to); return r.ok ? r : null; } catch (e) { clearTimeout(to); return null; } };
+    for (const base of CM_API) {
+      const rows = []; let url = `${base}/timeseries/asset-metrics?assets=btc&metrics=CapRealUSD,TxTfrValAdjUSD&frequency=1d&page_size=10000&start_time=2011-01-01`, guard = 0;
+      while (url && guard++ < 6) { const r = await get(url); if (!r) { rows.length = 0; break; } const j = await r.json(); for (const x of j.data || []) { const m = parseFloat(x.CapRealUSD), v = parseFloat(x.TxTfrValAdjUSD); rows.push({ t: Date.parse(x.time), mcr: Number.isFinite(m) ? m : NaN, tv: Number.isFinite(v) ? v : NaN }); } url = j.next_page_url || ''; }
+      if (rows.length > 1500) return rows;
+    }
+    const r = await get(CM_CSV); if (r) { // yedek: GitHub'daki topluluk CSV'si
+      const txt = await r.text(), lines = txt.split(/\r?\n/), h = lines[0].split(','), ti = h.indexOf('time'), mi = h.indexOf('CapRealUSD'), vi = h.indexOf('TxTfrValAdjUSD'); if (ti < 0 || mi < 0 || vi < 0) return null;
+      const rows = []; for (let i = 1; i < lines.length; i++) { const f = lines[i].split(','); if (f.length < h.length) continue; const m = parseFloat(f[mi]), v = parseFloat(f[vi]); rows.push({ t: Date.parse(f[ti]), mcr: Number.isFinite(m) ? m : NaN, tv: Number.isFinite(v) ? v : NaN }); } if (rows.length > 1500) return rows; }
+    return null;
+  }
+  function cvddGauge(cs, rows, opt) {
+    const SH = (opt && opt.shift) || 120, SL = (opt && opt.slope) || 100, IC = (opt && opt.icpt) || 100, n = cs.length, day = (x) => Math.floor(x / 864e5);
+    const byDay = new Map(rows.map((r) => [day(r.t), r])); // zincir üstü seri: 500 günlük ortalama için takvim sırası
+    const ord = rows.slice().sort((a, b) => a.t - b.t), sma = new Map(); let sum = 0, cnt = 0; const q = [];
+    for (const r of ord) { if (Number.isFinite(r.tv)) { q.push(r.tv); sum += r.tv; cnt++; if (q.length > 500) { sum -= q.shift(); cnt--; } } if (cnt >= 500) sma.set(day(r.t), sum / cnt); }
+    const cv = new Array(n).fill(NaN), bot = cv.slice(), top = cv.slice();
+    for (let i = 0; i < n; i++) { const d = day(cs[i].t), r = byDay.get(d), tv = sma.get(d); if (!r || !Number.isFinite(r.mcr) || tv == null) continue; const v = (r.mcr - tv) / 22e6; if (!(v > 0)) continue; cv[i] = v; bot[i] = v * SH / 100; top[i] = v * Math.pow(10, -8.1775e-13 * (SL / 100) * cs[i].t + 1.965805965 * (IC / 100)); }
+    const zT = [], zB = []; const zones = (pred, out) => { let a = -1; for (let i = 0; i <= n; i++) { const on = i < n && Number.isFinite(cv[i]) && pred(i); if (on && a < 0) a = i; if (!on && a >= 0) { out.push([a, i - 1]); a = -1; } } };
+    zones((i) => cs[i].h >= top[i], zT); zones((i) => cs[i].l <= bot[i], zB);
+    const last = (() => { for (let i = n - 1; i >= 0; i--) if (Number.isFinite(cv[i])) return i; return -1; })();
+    const cnts = (zs) => zs.reduce((s2, [a, b]) => s2 + b - a + 1, 0), cov = cv.filter(Number.isFinite).length;
+    return { cvdd: cv, bot, top, zT, zB, last, price: last >= 0 ? cs[last].c : NaN, ratio: last >= 0 ? cs[last].c / cv[last] : NaN, state: last < 0 ? null : cs[last].h >= top[last] ? 'top' : cs[last].l <= bot[last] ? 'bot' : 'mid', days: { cov, top: cnts(zT), bot: cnts(zB) }, params: { SH, SL, IC } };
+  }
+  function cvddCard(cg, t, cc, ctx, cyc) {
+    const { xMin, beam, bull, bear } = ctx, P = (x) => '$' + Math.round(x).toLocaleString('tr-TR'), N = t.length;
+    if (!cg || cg.last < 0) return null; const L = cg.last, st = cg.state, badge = st === 'top' ? 'Tepe bölgesi' : st === 'bot' ? 'Dip bölgesi' : cg.price < cg.cvdd[L] * 1.5 ? 'Dibe yakın' : 'Orta bölge', tn = st === 'top' ? 'down' : st === 'bot' ? 'up' : 'flat';
+    // gerçek uçlara göre karne: tepeler üst uzantıya, dipler alt çizgiye ne kadar yaklaştı
+    const rep = (cyc || []).map((cy) => { const dt = (i) => new Date(t[i]).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' }); const a = Number.isFinite(cg.top[cy.top]) ? `${dt(cy.top)} tepesi ${P(cy.topP)}: üst uzantının ${fmt2(cy.topP / cg.top[cy.top])}×'i` : null, b = Number.isFinite(cg.bot[cy.bot]) ? `${dt(cy.bot)} dibi ${P(cy.botP)}: alt çizginin ${fmt2(cy.botP / cg.bot[cy.bot])}×'i` : null; return [a, b].filter(Boolean).join('; '); }).filter(Boolean).join(' | ');
+    return {
+      id: 'cvdd', title: 'CVDD · Zincir Üstü Dip/Tepe', value: P(cg.cvdd[L]), unit: 'CVDD · fiyat ' + fmt2(cg.ratio) + '× CVDD', badge, tone: tn,
+      info: `CVDD (Coin Value Days Destroyed) Bitcoin'in gerçekleşmiş değerinden (coinlerin son hareket ettikleri fiyattan toplam değeri), uzun dönem ortalama transfer hacmini çıkarıp arzla bölerek bir "adil dip" fiyatı üretir. Üç çizgi: CVDD (yeşil), CVDD × ${cg.params.SH / 100} dip çizgisi (mor), zamanla alçalan bir çarpanla çizilen tepe uzantısı (pembe). Günlük en düşük fiyat dip çizgisine değerse yeşil, günlük en yüksek fiyat tepe uzantısına değerse kırmızı boyanır. Şu an CVDD ${P(cg.cvdd[L])}, dip çizgisi ${P(cg.bot[L])}, tepe uzantısı ${P(cg.top[L])}; fiyat ${P(cg.price)}. Geçmişte dip bölgesi ${cg.days.bot} gün, tepe bölgesi ${cg.days.top} gün boyandı (${cg.days.cov} günün). ${rep ? 'Gerçek uçlarla karşılaştırma: ' + rep + '. ' : ''}Bu bir yön tahmini değil, zincir üstü verisiyle uç bölgelerin haritasıdır. Veri Coin Metrics topluluk verisinden (CapRealUSD ve TxTfrValAdjUSD) gelir; transfer hacmi TradingView'daki Glassnode serisiyle birebir aynı olmayabileceğinden değerler orijinal TradingView çizgisinden sapabilir. Bölgeler az sayıda döngüye dayanır; geçmişte değen uçların gelecekte de değeceği garanti değildir.`,
+      cfg: { xMin, log: true, fmt: (v) => P(v).replace('$', ''), series: [
+        { nm: 'BTC', f: (v) => P(v), x: t, y: cc, color: 'rgba(233,238,248,.9)', w: 1.3 },
+        { nm: 'Tepe uzantısı', f: (v) => P(v), x: t, y: cg.top, color: '#c727e3', w: 1.4 },
+        { nm: 'CVDD', f: (v) => P(v), x: t, y: cg.cvdd, color: '#27e3c0', w: 1.6 },
+        { nm: 'Dip çizgisi', f: (v) => P(v), x: t, y: cg.bot, color: '#4920ff', w: 1.4 }],
+        zones: cg.zT.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(255,99,132,.25)' })).concat(cg.zB.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(53,214,160,.25)' }))), now: { x: t[N - 1], y: cc[N - 1] } },
+      legend: [['Fiyat', 'rgba(233,238,248,.9)'], ['Tepe uzantısı', '#c727e3'], ['CVDD', '#27e3c0'], ['Dip çizgisi', '#4920ff']] };
   }
 
   function compute(cs) {
@@ -319,6 +359,25 @@
   }
 
   /* ——— kartlar (market-ui.js'teki cards() ile aynı şema) ——— */
+  function zoneCard(zg, t, cc, ctx, coin) {
+    const { xMin, beam, bull, bear } = ctx, N = t.length, c2 = cc;
+    if (zg && Number.isFinite(zg.now)) {
+      const dstr2 = (i) => new Date(t[i]).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' }), P = (x) => '$' + Math.round(x).toLocaleString('tr-TR');
+      const badge = zg.nowZone === 'top' ? 'Tepe bölgesi' : zg.nowZone === 'bot' ? 'Dip bölgesi' : 'Orta bölge', tn = zg.nowZone === 'top' ? 'down' : zg.nowZone === 'bot' ? 'up' : 'flat';
+      const lines = zg.cycles.map((cy) => { const tp = cy.topHit.na ? `${dstr2(cy.top)} tepesi (${P(cy.topP)}): ölçü için geçmiş veri yetmedi` : `${dstr2(cy.top)} tepesi (${P(cy.topP)}): ısı ${Math.round(cy.topHeat)}, ${cy.topHit.hit ? 'tepe bölgesi tepeden ' + Math.max(0, cy.topHit.lead) + ' gün önce başlayıp tepeyi kapsadı' : 'tepe bölgesi işaretlemedi'}`, bt = `${dstr2(cy.bot)} dibi (${P(cy.botP)}): ısı ${Math.round(cy.botHeat)}, ${cy.botHit.hit ? 'dip bölgesi dipten ' + Math.max(0, cy.botHit.lead) + ' gün önce başlayıp dibi kapsadı' : 'dip bölgesi işaretlemedi'}`; return tp + '; ' + bt; }).join(' | ');
+      const pr = (v) => (Number.isFinite(v) ? '%' + Math.round(v * 100) : '–');
+      return {
+        id: 'zone', coin, title: 'Döngü Dip/Tepe Bölgeleri · ' + coin, value: Math.round(zg.now) + '/100', unit: 'döngü ısısı', badge, tone: tn,
+        info: `${coin} fiyatının son 4 yıllık döngüsünde nerede durduğunu 0-100 ile ölçer: 100 tepeye, 0 dibe yakın demektir. Üç fiyat ölçüsünün (200 gün ve 365 gün ortalamalarına göre uzaklık, son 4 yılın zirvesinden uzaklık) kendi son 4 yıllık geçmişindeki yüzdeliklerinin ortalamasıdır; her gün yalnızca o güne kadarki veri kullanıldığı için grafik, göstergenin o gün gerçekte ne göstereceğidir (geriye dönük süslenmedi). ${zg.TOP} üstü kırmızı tepe bölgesi, ${zg.BOT} altı yeşil dip bölgesi olarak boyanır; kesikli çizgiler yarılanma döngülerinde otomatik bulunan gerçek tepe ve diplerdir. Önceki döngüler: ${lines || 'veride tamamlanmış döngü bulunamadı'}. Bölge günlerinin gerçek uca ±90 gün yakın olanı: tepe ${pr(zg.precTop)}, dip ${pr(zg.precBot)} (günlerin yaklaşık %${Math.round(zg.share.top * 100)}'i tepe, %${Math.round(zg.share.bot * 100)}'i dip bölgesinde). Bölgeler uç noktayı tam gün olarak değil bölge olarak yakalar ve erken başlayabilir; her döngü farklı olduğundan, yalnızca iki tamamlanmış döngü vardır. Şu an ısı ${Math.round(zg.now)}. Bu bir yön tahmini değil, döngü içindeki konum ölçüsüdür.`,
+        cfg: { xMin, log: true, fmt: (v) => P(v).replace('$', ''), series: [{ nm: coin, f: (v) => P(v), x: t, y: cc, color: 'rgba(233,238,248,.9)', w: 1.3 }],
+          zones: zg.topZ.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(255,99,132,.22)' })).concat(zg.botZ.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(53,214,160,.22)' }))),
+          marks: zg.cycles.map((cy) => ({ x: t[cy.top], color: bear })).concat(zg.cycles.map((cy) => ({ x: t[cy.bot], color: bull }))),
+          under: { x: t, y: zg.heat, log: false, lo: 0, hi: 100, nm: 'Döngü ısısı', tip: (v) => Math.round(v) + '/100', fmt: (v) => Math.round(v), color: beam, refs: [{ y: zg.TOP, color: bear }, { y: zg.BOT, color: bull }] }, now: { x: t[N - 1], y: cc[N - 1] } },
+        legend: [['Tepe bölgesi', 'rgba(255,99,132,.7)'], ['Dip bölgesi', 'rgba(53,214,160,.7)'], ['Gerçek tepe/dip (kesikli)', 'rgba(233,238,248,.5)'], ['Döngü ısısı (altta)', beam]] };
+    }
+    return null;
+  }
+
   function cards(X, ctx) {
     const { t, xMin, beam, foam, bull, bear } = ctx, out = [], bw = X.bow, N = t.length;
 
@@ -366,21 +425,7 @@
       }
     }
     // 1c) Döngü Dip/Tepe Bölgeleri
-    const zg = X.zone;
-    if (zg && Number.isFinite(zg.now)) {
-      const dstr2 = (i) => new Date(t[i]).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' }), P = (x) => '$' + Math.round(x).toLocaleString('tr-TR');
-      const badge = zg.nowZone === 'top' ? 'Tepe bölgesi' : zg.nowZone === 'bot' ? 'Dip bölgesi' : 'Orta bölge', tn = zg.nowZone === 'top' ? 'down' : zg.nowZone === 'bot' ? 'up' : 'flat';
-      const lines = zg.cycles.map((cy) => { const tp = cy.topHit.na ? `${dstr2(cy.top)} tepesi (${P(cy.topP)}): ölçü için geçmiş veri yetmedi` : `${dstr2(cy.top)} tepesi (${P(cy.topP)}): ısı ${Math.round(cy.topHeat)}, ${cy.topHit.hit ? 'tepe bölgesi tepeden ' + Math.max(0, cy.topHit.lead) + ' gün önce başlayıp tepeyi kapsadı' : 'tepe bölgesi işaretlemedi'}`, bt = `${dstr2(cy.bot)} dibi (${P(cy.botP)}): ısı ${Math.round(cy.botHeat)}, ${cy.botHit.hit ? 'dip bölgesi dipten ' + Math.max(0, cy.botHit.lead) + ' gün önce başlayıp dibi kapsadı' : 'dip bölgesi işaretlemedi'}`; return tp + '; ' + bt; }).join(' | ');
-      const pr = (v) => (Number.isFinite(v) ? '%' + Math.round(v * 100) : '–');
-      out.push({
-        id: 'zone', title: 'Döngü Dip/Tepe Bölgeleri', value: Math.round(zg.now) + '/100', unit: 'döngü ısısı', badge, tone: tn,
-        info: `Fiyatın son 4 yıllık döngüsünde nerede durduğunu 0-100 ile ölçer: 100 tepeye, 0 dibe yakın demektir. Üç fiyat ölçüsünün (200 gün ve 365 gün ortalamalarına göre uzaklık, son 4 yılın zirvesinden uzaklık) kendi son 4 yıllık geçmişindeki yüzdeliklerinin ortalamasıdır; her gün yalnızca o güne kadarki veri kullanıldığı için grafik, göstergenin o gün gerçekte ne göstereceğidir (geriye dönük süslenmedi). ${zg.TOP} üstü kırmızı tepe bölgesi, ${zg.BOT} altı yeşil dip bölgesi olarak boyanır; kesikli çizgiler yarılanma döngülerinde otomatik bulunan gerçek tepe ve diplerdir. Önceki döngüler: ${lines || 'veride tamamlanmış döngü bulunamadı'}. Bölge günlerinin gerçek uca ±90 gün yakın olanı: tepe ${pr(zg.precTop)}, dip ${pr(zg.precBot)} (günlerin yaklaşık %${Math.round(zg.share.top * 100)}'i tepe, %${Math.round(zg.share.bot * 100)}'i dip bölgesinde). Bölgeler uç noktayı tam gün olarak değil bölge olarak yakalar ve erken başlayabilir; her döngü farklı olduğundan, yalnızca iki tamamlanmış döngü vardır. Şu an ısı ${Math.round(zg.now)}. Bu bir yön tahmini değil, döngü içindeki konum ölçüsüdür.`,
-        cfg: { xMin, log: true, fmt: (v) => P(v).replace('$', ''), series: [{ nm: 'BTC', f: (v) => P(v), x: t, y: ctx.c, color: 'rgba(233,238,248,.9)', w: 1.3 }],
-          zones: zg.topZ.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(255,99,132,.22)' })).concat(zg.botZ.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(53,214,160,.22)' }))),
-          marks: zg.cycles.map((cy) => ({ x: t[cy.top], color: bear })).concat(zg.cycles.map((cy) => ({ x: t[cy.bot], color: bull }))),
-          under: { x: t, y: zg.heat, log: false, lo: 0, hi: 100, nm: 'Döngü ısısı', tip: (v) => Math.round(v) + '/100', fmt: (v) => Math.round(v), color: beam, refs: [{ y: zg.TOP, color: bear }, { y: zg.BOT, color: bull }] }, now: { x: t[N - 1], y: ctx.c[N - 1] } },
-        legend: [['Tepe bölgesi', 'rgba(255,99,132,.7)'], ['Dip bölgesi', 'rgba(53,214,160,.7)'], ['Gerçek tepe/dip (kesikli)', 'rgba(233,238,248,.5)'], ['Döngü ısısı (altta)', beam]] });
-    }
+    { const zc = zoneCard(X.zone, t, ctx.c, ctx, 'BTC'); if (zc) out.push(zc); }
 
     // 2) Yay Gerilimi (varsayılan kapalı: sentetik sınamada iddiası tutmadı; ctx.showBow ile açılır)
     if (!ctx.showBow) return out;
@@ -400,5 +445,5 @@
     return out;
   }
 
-  return { compute, cards, loadFunding, loadFundingSeries, fundDaily, fundStats, zoneGauge, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
+  return { compute, cards, zoneCard, cvddCard, cvddGauge, loadCvddData, loadFunding, loadFundingSeries, fundDaily, fundStats, zoneGauge, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
 });

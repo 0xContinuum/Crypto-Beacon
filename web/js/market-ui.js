@@ -8,7 +8,7 @@
   const dstr = (t) => new Date(t).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' });
   const ds = (t) => new Date(t).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
   const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  let R = null, range = 'all', loading = false, failed = false, lastCards = [], fullId = '';
+  let zoneCoin = 'BTC', ZC = {}, zoneBusy = false, cvdd = undefined; let R = null, range = 'all', loading = false, failed = false, lastCards = [], fullId = '';
   const FREE = new Set(['pi', 'mayer']);
   const css = (n, f) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || f;
 
@@ -73,7 +73,7 @@
       if (cfg.under) { const k = near(cfg.under.x); if (tx == null) tx = cfg.under.x[k]; if (Y2) { c.fillStyle = '#fff'; c.beginPath(); c.arc(X(cfg.under.x[k]), Y2(cfg.under.y[k]), 3, 0, 7); c.fill(); } lines.push([cfg.under.nm || 'BTC', cfg.under.tip ? cfg.under.tip(cfg.under.y[k]) : '$' + fmtUsd(cfg.under.y[k]), cfg.under.color || '#fff']); }
       if (tx != null) {
         const hx = Math.round(X(tx)) + 0.5; c.strokeStyle = 'rgba(233,238,248,.45)'; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(hx, 0); c.lineTo(hx, phAll); c.stroke(); c.setLineDash([]);
-        const f2 = 10.5 * FS, lh = 14 * FS, title = ds(tx); c.font = `600 ${f2}px ${font}`; let bw = c.measureText(title).width; for (const [n, v] of lines) bw = Math.max(bw, c.measureText(n + ': ' + v).width); bw += 14;
+        const f2 = 10.5 * FS, lh = 14 * FS, title = cfg.xl ? cfg.xl(tx) : ds(tx); c.font = `600 ${f2}px ${font}`; let bw = c.measureText(title).width; for (const [n, v] of lines) bw = Math.max(bw, c.measureText(n + ': ' + v).width); bw += 14;
         const bh = (lines.length + 1) * lh + 8, bx = hx > pw / 2 ? hx - bw - 8 : hx + 8, by = 4; c.fillStyle = 'rgba(6,10,18,.92)'; c.strokeStyle = 'rgba(233,238,248,.25)'; c.beginPath(); c.roundRect ? c.roundRect(bx, by, bw, bh, 6) : c.rect(bx, by, bw, bh); c.fill(); c.stroke();
         c.textAlign = 'left'; c.textBaseline = 'top'; c.fillStyle = '#e9eef8'; c.fillText(title, bx + 7, by + 5); let yy = by + 5 + lh;
         for (const [n, v, col] of lines) { c.fillStyle = col; c.fillText(n + ': ' + v, bx + 7, yy); yy += lh; }
@@ -92,43 +92,65 @@
   /* ——— kart tanımları ——— */
   function cards(r) {
     const t = r.t, c = r.c, tMax = r.asOf, yrs = range === '1y' ? 1 : range === '4y' ? 4 : 99, xMin = tMax - yrs * 365.25 * 864e5, beam = css('--beam', '#ffc25c'), foam = 'rgba(233,238,248,.85)', bull = css('--bull', '#35d6a0'), bear = css('--bear', '#ff6384');
-    const price = { x: t, y: c, color: foam, w: 1.3 }, nowAt = (arr) => ({ x: t[t.length - 1], y: arr[arr.length - 1] });
+    const price = { nm: 'BTC', f: (v) => '$' + fmtUsd(v), x: t, y: c, color: foam, w: 1.3 }, nowAt = (arr) => ({ x: t[t.length - 1], y: arr[arr.length - 1] });
     const tone = (ok, warn) => (ok ? 'down' : warn ? 'warn' : 'up');
     return [
       { id: 'pi', title: 'Pi Cycle Top', value: r.pi.now.toFixed(2), unit: 'oran', badge: r.pi.state, tone: tone(r.pi.state === 'Tetiklendi', r.pi.state === 'Yaklaştı'),
         info: `111 günlük ortalamanın, 350 günlük ortalamanın 2 katına oranı. Oran 1'e ulaştığında (111G, 2×350G'yi yukarı keser) Bitcoin'in geçmiş iki büyük döngü tepesine denk gelmiştir (2017 ve 2021). Veri örneği az olduğu için kesin bir sinyal değildir. Son kesişim: ${r.pi.crosses.length ? ds(r.pi.crosses[r.pi.crosses.length - 1]) : 'bu veride yok'}.`,
-        cfg: { log: true, xMin, series: [price, { x: t, y: r.pi.s111, color: beam, w: 1.5 }, { x: t, y: r.pi.pi2, color: bear, w: 1.5, dash: [5, 4] }], marks: r.pi.crosses.map((x) => ({ x, color: bear })) }, legend: [['Fiyat', foam], ['111G', beam], ['2×350G', bear]] },
+        cfg: { log: true, xMin, series: [price, { nm: '111G ort.', f: (v) => '$' + fmtUsd(v), x: t, y: r.pi.s111, color: beam, w: 1.5 }, { nm: '2×350G ort.', f: (v) => '$' + fmtUsd(v), x: t, y: r.pi.pi2, color: bear, w: 1.5, dash: [5, 4] }], marks: r.pi.crosses.map((x) => ({ x, color: bear })) }, legend: [['Fiyat', foam], ['111G', beam], ['2×350G', bear]] },
       { id: 'mayer', title: 'Mayer Çarpanı', value: fmtX(r.mayer.now), unit: '', badge: r.mayer.state, tone: tone(r.mayer.state === 'Aşırı' || r.mayer.state === 'Yüksek', false),
         info: `Fiyatın 200 günlük ortalamaya oranı. Tarihsel ortalama bu veride ${fmtX(r.mayer.avg)}. 2,4 üstü geçmişte aşırı ısınma, 0,8 altı ise derin düşüş dönemlerinde görülmüştür; eşikler yalnızca tarihsel referanstır.`,
-        cfg: { xMin, fmt: (v) => v.toFixed(1), series: [{ x: t, y: r.mayer.ratio, color: beam, w: 1.6 }], refs: [{ y: 0.8, color: bull, label: '0,8' }, { y: 1, color: 'rgba(233,238,248,.4)', label: '1' }, { y: 2.4, color: bear, label: '2,4' }], now: nowAt(r.mayer.ratio) }, legend: [['Fiyat / 200G', beam]] },
+        cfg: { xMin, fmt: (v) => v.toFixed(1), series: [{ nm: 'Fiyat / 200G', f: (v) => fmtX(v), x: t, y: r.mayer.ratio, color: beam, w: 1.6 }], refs: [{ y: 0.8, color: bull, label: '0,8' }, { y: 1, color: 'rgba(233,238,248,.4)', label: '1' }, { y: 2.4, color: bear, label: '2,4' }], now: nowAt(r.mayer.ratio) }, legend: [['Fiyat / 200G', beam]] },
       { id: 'w200', title: '200 Hafta Ortalama', value: r.w200.available ? fmtX(r.w200.now) : 'veri yok', unit: r.w200.available ? '$' + fmtUsd(r.w200.maNow) : '', badge: r.w200.available ? r.w200.state : 'Yetersiz geçmiş', tone: tone(r.w200.now > 3, r.w200.now >= 1.5),
         info: 'Fiyatın 200 haftalık (1400 günlük) ortalamaya oranı. Bitcoin geçmişte çoğu zaman bu ortalamanın üzerinde kalmış, ayı piyasası diplerinde ona yaklaşmış ya da kısa süre altına inmiştir. Ortalama, borsa verisinin başladığı 2017\'den itibaren hesaplanabildiği için çizgi 2021 civarında başlar.',
-        cfg: { log: true, xMin, series: [price, { x: t, y: r.w200.ma, color: beam, w: 1.8 }] }, legend: [['Fiyat', foam], ['200 hafta ort.', beam]] },
+        cfg: { log: true, xMin, series: [price, { nm: '200 hafta ort.', f: (v) => '$' + fmtUsd(v), x: t, y: r.w200.ma, color: beam, w: 1.8 }] }, legend: [['Fiyat', foam], ['200 hafta ort.', beam]] },
       { id: 'ma2y', title: '2 Yıllık Ortalama Çarpanı', value: r.ma2y.available ? fmtX(r.ma2y.now) : 'veri yok', unit: '', badge: r.ma2y.available ? r.ma2y.state : 'Yetersiz geçmiş', tone: tone(r.ma2y.now >= 5, r.ma2y.now >= 3),
         info: 'Fiyat, 730 günlük ortalama ve onun 5 katı. Fiyat alt çizginin altındayken tarihsel olarak uzun vadeli düşük bölge, 5× çizgisine yaklaşırken aşırı ısınma görülmüştür. Geçmiş döngüler gelecekte aynen tekrar etmeyebilir.',
-        cfg: { log: true, xMin, series: [price, { x: t, y: r.ma2y.ma, color: bull, w: 1.5 }, { x: t, y: r.ma2y.x5, color: bear, w: 1.5 }] }, legend: [['Fiyat', foam], ['2Y ort.', bull], ['2Y ort. ×5', bear]] },
+        cfg: { log: true, xMin, series: [price, { nm: '2Y ort.', f: (v) => '$' + fmtUsd(v), x: t, y: r.ma2y.ma, color: bull, w: 1.5 }, { nm: '2Y ort. ×5', f: (v) => '$' + fmtUsd(v), x: t, y: r.ma2y.x5, color: bear, w: 1.5 }] }, legend: [['Fiyat', foam], ['2Y ort.', bull], ['2Y ort. ×5', bear]] },
       { id: 'rainbow', title: 'Regresyon Bantları', value: r.rainbow.name, unit: (r.rainbow.now >= 0 ? '+' : '−') + Math.abs(r.rainbow.now).toFixed(2) + ' σ', badge: r.rainbow.name, tone: tone(r.rainbow.idx >= 6, r.rainbow.idx >= 5),
         info: 'Beacon kendi uyumunu kullanır: fiyatın logaritması, Bitcoin\'in doğumundan beri geçen günün logaritmasına doğrusal olarak uydurulur; bantlar bu çizginin ±σ katlarıdır. Başka sitelerdeki "gökkuşağı" çizelgelerinden farklıdır, yalnızca 2017 sonrası veriyle hesaplanır ve gelecek için tahmin değildir.',
-        cfg: { log: true, xMin, series: [{ x: t, y: c, color: '#ffffff', w: 1.4 }], bands: r.rainbow.bands, bandX: t, bandColors: r.rainbow.colors, now: nowAt(c) }, legend: r.rainbow.names.map((n, i) => [n, r.rainbow.colors[i]]).filter((_, i) => i % 2 === 0) },
+        cfg: { log: true, xMin, series: [{ nm: 'BTC', f: (v) => '$' + fmtUsd(v), x: t, y: c, color: '#ffffff', w: 1.4 }], bands: r.rainbow.bands, bandX: t, bandColors: r.rainbow.colors, now: nowAt(c) }, legend: r.rainbow.names.map((n, i) => [n, r.rainbow.colors[i]]).filter((_, i) => i % 2 === 0) },
       (() => {
         const h = r.halving, cyc = h.cycles, col = ['rgba(233,238,248,.55)', beam];
-        const series = cyc.map((cy, i) => ({ x: cy.vals.map((_, k) => k), y: cy.vals, color: col[i % 2], w: i === cyc.length - 1 ? 2 : 1.3, dash: i === cyc.length - 1 ? null : [5, 4] }));
+        const series = cyc.map((cy, i) => ({ nm: new Date(cy.start).getFullYear() + ' döngüsü', f: (v) => fmtX(v), x: cy.vals.map((_, k) => k), y: cy.vals, color: col[i % 2], w: i === cyc.length - 1 ? 2 : 1.3, dash: i === cyc.length - 1 ? null : [5, 4] }));
         return { id: 'halving', title: 'Halving Döngüsü', value: h.daysSince + '. gün', unit: 'ATH\'den ' + (h.drawdown * 100).toFixed(1).replace('.', ',') + '%', badge: h.state, tone: tone(false, h.drawdown > -0.1),
           info: `Son halving 20 Nisan 2024. Çizgiler, halving gününün fiyatına göre çarpan olarak gösterilir: soluk çizgi önceki (2020) döngü, sarı çizgi bugünkü döngü. Şu an halving fiyatının ${fmtX(h.multiple)} seviyesinde. ATH ${h.athDays} gün önce görüldü ($${fmtUsd(h.ath)}). Sonraki halving tahmini 2028 baharı (${h.daysToNext} gün). Döngüler tekrar etmek zorunda değildir.`,
           cfg: { log: true, xMin: 0, xl: (x) => Math.round(x) + '. gün', fmt: (v) => v.toFixed(v < 10 ? 1 : 0) + '×', series, now: series.length ? { x: series[series.length - 1].x.length - 1, y: series[series.length - 1].y[series[series.length - 1].y.length - 1] } : null }, legend: cyc.map((cy, i) => [new Date(cy.start).getFullYear() + ' döngüsü', col[i % 2]]) };
       })(),
-      ...(r.x && window.BeaconMarketX ? window.BeaconMarketX.cards(r.x, { t, c, xMin, beam, foam, bull, bear }) : []),
+      ...extraCards(r, { t, c, xMin, beam, foam, bull, bear }),
     ];
   }
 
+  const COINS4 = ['BTC', 'ETH', 'XRP', 'SOL'];
+  function extraCards(r, ctx) {
+    const X = window.BeaconMarketX; if (!(r.x && X)) return [];
+    const out = X.cards(r.x, ctx).filter((k) => k.id !== 'zone'), at = out.findIndex((k) => k.id === 'drop' ? false : false);
+    let zc = null;
+    if (zoneCoin === 'BTC') zc = X.zoneCard(r.x.zone, ctx.t, ctx.c, ctx, 'BTC');
+    else if (ZC[zoneCoin]) zc = X.zoneCard(ZC[zoneCoin].zg, ZC[zoneCoin].t, ZC[zoneCoin].c, ctx, zoneCoin);
+    if (!zc) zc = { id: 'zone', title: 'Döngü Dip/Tepe Bölgeleri · ' + zoneCoin, value: '…', unit: 'yükleniyor', badge: 'Yükleniyor', tone: 'flat', info: 'Veri indiriliyor.', cfg: { xMin: ctx.xMin, log: true, series: [{ nm: 'BTC', x: ctx.t, y: ctx.c, color: 'rgba(233,238,248,.3)', w: 1 }] }, legend: [] };
+    zc.coinBar = true; const k0 = out.findIndex((k) => k.id === 'drop'); out.splice(k0 >= 0 ? k0 + 1 : out.length, 0, zc);
+    if (cvdd !== undefined) {
+      let cc = null; if (cvdd && cvdd.rows) { if (!cvdd.g) cvdd.g = X.cvddGauge(r.cs, cvdd.rows); cc = X.cvddCard(cvdd.g, ctx.t, ctx.c, ctx, r.x.zone && r.x.zone.cycles); }
+      out.push(cc || { id: 'cvdd', title: 'CVDD · Zincir Üstü Dip/Tepe', value: '–', unit: 'veri alınamadı', badge: 'Veri yok', tone: 'flat', info: 'CVDD için zincir üstü veri (Coin Metrics topluluk verisi) bu ağdan alınamadı. Bağlantınızı kontrol edip sayfayı yenileyin; bazı ağlar bu adresi engelleyebilir.', cfg: { xMin: ctx.xMin, log: true, series: [{ nm: 'BTC', f: (v) => '$' + fmtUsd(v), x: ctx.t, y: ctx.c, color: 'rgba(233,238,248,.3)', w: 1 }] }, legend: [] });
+    }
+    return out;
+  }
+  async function loadZoneCoin(coin) {
+    if (ZC[coin] || zoneBusy) return; zoneBusy = true; render();
+    try { const cs = await D.loadLong(coin, '1d', 5), X = window.BeaconMarketX, zg = X.zoneGauge(cs); ZC[coin] = { zg, t: cs.map((k) => k.t), c: cs.map((k) => k.c) }; }
+    catch (e) { BX().toast && BX().toast(coin + ' verisine ulaşılamadı'); zoneCoin = 'BTC'; }
+    zoneBusy = false; render(); if (fullId) drawFull();
+  }
   function render() {
     const box = $('mkBox'); if (!box) return;
     if (loading && !R) { box.innerHTML = '<div class="skelcard"></div><div class="skelcard"></div><div class="skelcard"></div>'; return; }
     if (failed && !R) { box.innerHTML = '<div class="empty"><b>Veri alınamadı</b><p class="note">Borsa verisine ulaşılamadı.</p><button class="cta ghost" id="mkRetry" style="max-width:220px;margin:12px auto 0">Tekrar dene</button></div>'; return; }
     if (!R) return;
     const pro = BX().isPro(), cs = cards(R); lastCards = cs;
-    box.innerHTML = `<p class="note pad">Bitcoin'in günlük fiyatından hesaplanan döngü göstergeleri. Son veri: ${ds(R.asOf)}. Zincir üstü veriler (MVRV, NUPL vb.) fiyattan hesaplanamadığı için dahil değildir.</p>` +
-      cs.map((k) => { const lock = !pro && !FREE.has(k.id); return `<article class="mk ${lock ? 'locked' : ''}" data-id="${k.id}" ${lock ? '' : 'tabindex="0" role="button" aria-label="' + k.title + ' grafiğini tam ekran aç"'}><header><h3>${k.title}${FREE.has(k.id) ? '' : ' <span class="pill">Pro</span>'}</h3><span class="badge ${lock ? 'flat' : k.tone}">${lock ? 'Kilitli' : esc(k.badge)}</span></header>
+    const coinBar = () => `<div class="zcoins" role="group" aria-label="Coin seç">${COINS4.map((x) => `<button type="button" data-zcoin="${x}" aria-pressed="${x === zoneCoin}">${x}</button>`).join('')}</div>`;
+    box.innerHTML = `<p class="note pad">Bitcoin'in günlük fiyatından hesaplanan döngü göstergeleri, funding ve CVDD (zincir üstü, Coin Metrics topluluk verisi). Son veri: ${ds(R.asOf)}. MVRV, NUPL gibi diğer zincir üstü ölçüler dahil değildir.</p>` +
+      cs.map((k) => { const lock = !pro && !FREE.has(k.id); return `<article class="mk ${lock ? 'locked' : ''}" data-id="${k.id}" ${lock ? '' : 'tabindex="0" role="button" aria-label="' + k.title + ' grafiğini tam ekran aç"'}><header><h3>${k.title}${FREE.has(k.id) ? '' : ' <span class="pill">Pro</span>'}</h3><span class="badge ${lock ? 'flat' : k.tone}">${lock ? 'Kilitli' : esc(k.badge)}</span></header>${k.coinBar && !lock ? coinBar() : ''}
         <div class="mkv"><b class="num">${lock ? '••••' : esc(k.value)}</b><span class="dim">${lock ? '' : esc(k.unit)}</span></div>
         <div class="mkc"><canvas aria-label="${k.title} grafiği"></canvas>${lock ? '<button class="cta unlock" data-unlock>Pro ile aç</button>' : ''}</div>
         <div class="lg">${k.legend.map(([n, c]) => `<span><i style="background:${c}"></i>${esc(n)}</span>`).join('')}</div>
@@ -141,6 +163,7 @@
     if (loading) return; loading = true; failed = false; render();
     try {
       const cs = await D.loadLong('BTC', '1d', 5); R = M.compute(cs); if (!R) throw new Error('veri az');
+      R.cs = cs; if (cvdd === undefined && window.BeaconMarketX && window.BeaconMarketX.loadCvddData) window.BeaconMarketX.loadCvddData().then((rows) => { cvdd = rows ? { rows } : null; render(); if (fullId) drawFull(); }).catch(() => { cvdd = null; render(); });
       try { R.x = window.BeaconMarketX ? window.BeaconMarketX.compute(cs) : null; } catch (e) { R.x = null; }
       if (R.x && window.BeaconMarketX.loadFundingSeries) window.BeaconMarketX.loadFundingSeries().then((fs) => { if (R && R.x && fs) { R.x.fund = fs; render(); if (fullId) drawFull(); } });
       if (R.x) window.BeaconMarketX.loadFunding().then((f) => { if (R && R.x) { R.x.funding = f; render(); if (fullId) drawFull(); } }); // funding gelirse yön eğilimi güncellenir
@@ -168,6 +191,7 @@
     const fr = e.target.closest('#mfRange [data-r]');
     if (fr) { range = fr.dataset.r; $('mkRange').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.r === range)); render(); drawFull(); }
     if (e.target.closest('#mfShare')) { const k = lastCards.find((x) => x.id === fullId); if (k) BX().shareImage($('mfCv'), 'BTC · ' + k.title, k.value + (k.unit ? ' ' + k.unit : '') + ' · ' + k.badge, 'beacon-' + k.id); }
+    const zb = e.target.closest('[data-zcoin]'); if (zb) { e.stopPropagation(); zoneCoin = zb.dataset.zcoin; if (zoneCoin !== 'BTC' && !ZC[zoneCoin]) loadZoneCoin(zoneCoin); else render(); return; }
     if (e.target.closest('#mkRetry')) load();
     if (e.target.closest('[data-unlock]')) BX().go('pro');
     const r = e.target.closest('#mkRange [data-r]');
