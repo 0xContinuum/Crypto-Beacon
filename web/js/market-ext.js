@@ -307,7 +307,8 @@
      fakat tek bir yüzdelik yerine bütün seviyeler için olasılık eğrisi verir (ör. "−%15'e değme olasılığı %12").
      Güvenilirlik sınaması: her gün için o gün bilinenle yapılan olasılık, sonradan gerçekleşen değme sıklığıyla karşılaştırılır. */
   const TOUCH_LV = [-30, -20, -10, -5, 5, 10, 20, 30];
-  function touchModel(cs, H, wantLevels) {
+  function touchModel(cs, H, wantLevels, levels) {
+    const LV = levels || TOUCH_LV;
     const n = cs.length, LN2 = Math.log(2), MINTRAIN = 250, W0 = 89, K = 5, c = cs.map((k) => k.c);
     const v = cs.map((k) => { const r = Math.log(k.h / Math.max(k.l, 1e-12)); return Math.max(r * r / (4 * LN2), 1e-10); });
     const cum = [0]; for (let i = 0; i < n; i++) cum.push(cum[i] + v[i]);
@@ -318,18 +319,18 @@
     const ext = (i) => { let lo = Infinity, hi = -Infinity; for (let j = i + 1; j <= i + H; j++) { if (cs[j].l < lo) lo = cs[j].l; if (cs[j].h > hi) hi = cs[j].h; } return [Math.log(Math.min(lo, c[i]) / c[i]), Math.log(Math.max(hi, c[i]) / c[i])]; };
     const pDown = (sc, d) => cntLE(sD, Math.log(1 + d / 100) / sc) / sD.length;               // d<0: en düşük ≤ seviye olasılığı
     const pUp = (sc, u) => { const z = Math.log(1 + u / 100) / sc; let lo = 0, hi = sU.length; while (lo < hi) { const m = (lo + hi) >> 1; if (sU[m] < z) lo = m + 1; else hi = m; } return (sU.length - lo) / sU.length; };
-    const cal = wantLevels ? TOUCH_LV.map(() => ({ p: 0, r: 0, k: 0 })) : null; let last = null;
+    const cal = wantLevels ? LV.map(() => ({ p: 0, r: 0, k: 0 })) : null; let last = null;
     for (let t = W0; t < n; t++) {
       const s2 = t - H;
       if (s2 >= W0) { const x = feat(s2), y = yOf(s2); rows++; for (let a = 0; a < K; a++) { Xty[a] += x[a] * y; for (let b = 0; b < K; b++) XtX[a][b] += x[a] * x[b]; } if (Number.isFinite(yhat[s2])) { const [d, u] = ext(s2), sc = Math.exp(yhat[s2]) * Math.sqrt(H); ins(sD, d / sc); ins(sU, u / sc); } }
       if (rows >= MINTRAIN) { const A = XtX.map((r, i) => r.map((x, j) => x + (i === j && i > 0 ? 1e-6 : 0))), beta = solve4(A, Xty); if (beta) yhat[t] = feat(t).reduce((a, b, i) => a + b * beta[i], 0); }
       if (Number.isFinite(yhat[t]) && sD.length >= 120) {
         const sc = Math.exp(yhat[t]) * Math.sqrt(H);
-        if (cal && t + H < n) { const [d, u] = ext(t); TOUCH_LV.forEach((L, k) => { const pr = L < 0 ? pDown(sc, L) : pUp(sc, L), hit = L < 0 ? (d <= Math.log(1 + L / 100) ? 1 : 0) : (u >= Math.log(1 + L / 100) ? 1 : 0); cal[k].p += pr; cal[k].r += hit; cal[k].k++; }); }
+        if (cal && t + H < n) { const [d, u] = ext(t); LV.forEach((L, k) => { const pr = L < 0 ? pDown(sc, L) : pUp(sc, L), hit = L < 0 ? (d <= Math.log(1 + L / 100) ? 1 : 0) : (u >= Math.log(1 + L / 100) ? 1 : 0); cal[k].p += pr; cal[k].r += hit; cal[k].k++; }); }
         if (t === n - 1) last = { sc, pDown: (d) => pDown(sc, d), pUp: (u) => pUp(sc, u) };
       }
     }
-    return { H, yhat, last, cal: cal ? cal.map((x, k) => ({ L: TOUCH_LV[k], pred: x.p / x.k, real: x.r / x.k, n: x.k })) : null, nSamples: sD.length };
+    return { H, yhat, last, cal: cal ? cal.map((x, k) => ({ L: LV[k], pred: x.p / x.k, real: x.r / x.k, n: x.k })) : null, nSamples: sD.length };
   }
   function touchMap(cs) {
     const Hs = [7, 14, 30], ms = Hs.map((H) => touchModel(cs, H, true)), price = cs[cs.length - 1].c; if (!ms[2].last) return null;
@@ -412,42 +413,27 @@
       refs: [{ y: 0, color: 'rgba(233,238,248,.3)', label: '0' }], now: (x, tt, n) => (Number.isFinite(x.rel[n - 1]) ? { x: tt[n - 1], y: x.rel[n - 1] } : null) });
   }
 
-  /* ——— Uzun Vade Döngü Sinyali: dört bağımsız ölçünün mutabakatı, döngüde bir kez ———
-     Dip koşulları: (1) döngü ısısı ≤ 10, (2) Pi oranı 4 yıllık yüzdeliği ≤ 3, (3) son 45 günde hacim "teslimiyeti", (4) fiyatın 365 günlük zirveden uzaklığı 4 yıllık en derin %10'da.
-     Tepe koşulları: (1) ısı ≥ 90, (2) Pi oranı yüzdeliği ≥ 97, (3) son 45 günde hacim "coşkusu", (4) 90 günlük getiri 4 yıllık en güçlü %10'da.
-     Sinyal: aynı yönde en az 3 koşul aynı anda sağlanınca; aynı yönde iki sinyal arası en az 365 gün. Sinyalden sonra gerçekleşenler (daha ne kadar düştü/çıktı) ayrıca ölçülür. */
-  function cycleSignal(cs, zone, pi, vo) {
-    const n = cs.length, LB = 45, recent = (ev, i) => ev.some((e) => e <= i && i - e <= LB);
-    const bc = new Array(n).fill(0), tc = new Array(n).fill(0), cnt = new Array(n).fill(NaN);
-    for (let i = 0; i < n; i++) {
-      const h = zone.heat[i]; if (!Number.isFinite(h) || !Number.isFinite(pi.rankT[i])) continue;
-      bc[i] = (h <= zone.BOT ? 1 : 0) + (pi.rankB[i] <= 3 ? 1 : 0) + (recent(vo.botEv, i) ? 1 : 0) + (vo.rankD[i] <= 10 ? 1 : 0);
-      tc[i] = (h >= zone.TOP ? 1 : 0) + (pi.rankT[i] >= 97 ? 1 : 0) + (recent(vo.topEv, i) ? 1 : 0) + (vo.rankR[i] >= 90 ? 1 : 0);
-      cnt[i] = bc[i] - tc[i];
-    }
-    const botEv = episodes(bc.map((x) => x >= 3), 365), topEv = episodes(tc.map((x) => x >= 3), 365), rec = recordOf(cs, topEv, botEv);
-    // sinyal sonrası: dip sinyalinden sonra daha ne kadar düştü ve 365 gün sonra getiri; tepe sinyalinden sonra en çok ne kadar düştü
-    const after = (ev, dir) => ev.map((e) => { let lo = Infinity, hi = -Infinity; const end = Math.min(n - 1, e + 365); for (let j = e; j <= end; j++) { if (cs[j].l < lo) lo = cs[j].l; if (cs[j].h > hi) hi = cs[j].h; } const c0 = cs[e].c; return { i: e, price: c0, worse: dir > 0 ? lo / c0 - 1 : hi / c0 - 1, best: dir > 0 ? hi / c0 - 1 : lo / c0 - 1, ret365: e + 365 < n ? cs[e + 365].c / c0 - 1 : NaN, full: e + 365 < n }; });
-    const last = n - 1;
-    return { bc, tc, cnt, botEv, topEv, rec, botAfter: after(botEv, 1), topAfter: after(topEv, -1), now: { b: bc[last], t: tc[last] } };
-  }
-  function cycleCard(g, t, cc, ctx) {
-    const { xMin, beam, bull, bear } = ctx, P = (x) => '$' + Math.round(x).toLocaleString('tr-TR'), dstr2 = (i) => new Date(t[i]).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' }), N = t.length, pc = (v) => (v >= 0 ? '+' : '−') + '%' + Math.abs(Math.round(v * 100));
-    const botTxt = g.botAfter.map((a) => `${dstr2(a.i)} dip sinyali (${P(a.price)}): sinyalden sonra fiyat en çok ${pc(a.worse)} daha ${a.worse < 0 ? 'düştü' : 'indi'}, 1 yıl içindeki en yüksek ${pc(a.best)}${a.full ? ', 365 gün sonra ' + pc(a.ret365) : ' (1 yıl henüz dolmadı)'}`).join('; '), topTxt = g.topAfter.map((a) => `${dstr2(a.i)} tepe sinyali (${P(a.price)}): sinyalden sonra fiyat en çok ${pc(a.worse)} daha ${a.worse > 0 ? 'çıktı' : 'çıkabildi'}, 1 yıl içindeki en düşük ${pc(a.best)}${a.full ? ', 365 gün sonra ' + pc(a.ret365) : ' (1 yıl henüz dolmadı)'}`).join('; ');
-    const rows = g.rec.rows.map((r) => `${dstr2(r.top)} tepesi: ${r.topSig == null ? 'sinyal yok' : (r.topOff === 0 ? 'tepe günü' : Math.abs(r.topOff) + ' gün ' + (r.topOff < 0 ? 'önce' : 'sonra')) + ' sinyal'}; ${dstr2(r.bot)} dibi: ${r.botSig == null ? 'sinyal yok' : (r.botOff === 0 ? 'dip günü' : Math.abs(r.botOff) + ' gün ' + (r.botOff < 0 ? 'önce' : 'sonra')) + ' sinyal'}`).join(' | ');
-    const b = g.now.b, tp = g.now.t, state = b >= 3 ? 'Dip sinyali' : tp >= 3 ? 'Tepe sinyali' : b >= 2 ? 'Dibe yakın' : tp >= 2 ? 'Tepeye yakın' : 'Sinyal yok', tone = b >= 3 ? 'up' : tp >= 3 ? 'down' : 'flat';
-    return { id: 'cycle', title: 'Uzun Vade Döngü Sinyali', value: b >= tp ? b + '/4 dip' : tp + '/4 tepe', unit: 'koşul sağlanıyor', badge: state, tone,
-      info: `Dört bağımsız ölçünün mutabakatıdır: döngü ısısı, Pi oranı (uyarlanabilir), hacim teslimiyeti/coşkusu ve fiyatın zirveden uzaklığı / 90 günlük gücü. Aynı yönde en az 3 koşul birlikte sağlanınca sinyal verilir ve aynı yönde 365 gün susar; yani yaklaşık döngüde bir kez. Yeşil kesikli çizgiler dip, kırmızılar tepe sinyalidir. Aşağıdaki çizgi dip koşulu sayısından tepe koşulu sayısını çıkarır: +3 ve üstü dip, −3 ve altı tepe bölgesidir. Sinyal sayısı: ${g.botEv.length} dip, ${g.topEv.length} tepe. Gerçek uçlara karne (±45 gün): ${rows || 'veride tamamlanmış döngü yok'}. ${botTxt ? 'Dip sinyali sonrası: ' + botTxt + '. ' : ''}${topTxt ? 'Tepe sinyali sonrası: ' + topTxt + '. ' : ''}Önemli: sinyaller nokta değil bölge verir; dip sinyalinden sonra fiyatın bir süre daha düşmesi normaldir, bu yüzden kademeli alım/satım düşünülmelidir. Birkaç döngüye dayanır, başarı oranı bu kadar az örnekle istatistiksel olarak kanıtlanamaz. Yatırım tavsiyesi değildir.`,
-      cfg: { xMin, log: true, fmt: (v) => P(v).replace('$', ''), series: [{ nm: 'BTC', f: (v) => P(v), x: t, y: cc, color: 'rgba(233,238,248,.9)', w: 1.3 }],
-        marks: g.topEv.map((k) => ({ x: t[k], color: bear })).concat(g.botEv.map((k) => ({ x: t[k], color: bull }))),
-        under: { x: t, y: g.cnt, log: false, lo: -4, hi: 4, nm: 'Dip − tepe koşulu', tip: (v) => (v > 0 ? '+' : '') + v, fmt: (v) => (v > 0 ? '+' : '') + Math.round(v), color: beam, refs: [{ y: 3, color: bull }, { y: -3, color: bear }, { y: 0, color: 'rgba(233,238,248,.25)' }] }, now: { x: t[N - 1], y: cc[N - 1] } },
-      legend: [['Dip sinyali', bull], ['Tepe sinyali', bear], ['Koşul farkı (altta)', beam]] };
+
+  /* ——— Kaldıraç Güvenlik Haritası ———
+     "N kat kaldıraçla açılan pozisyonun likidasyon seviyesine önümüzdeki 7/14/30 günde dokunma olasılığı".
+     Likidasyon mesafesi yaklaşık 1/N − %0,5 (bakım marjini) alınır; long için aşağı, short için yukarı seviye. İzole marjin, ücretler ve funding ihmal edilir.
+     Olasılıklar Seviye Değme modeliyle (HAR oynaklık + geçmiş uç hareket dağılımı, yalnızca geçmiş veri) hesaplanır ve her gün için sonradan gerçekleşenle sınanır. */
+  const LEV_MM = 0.5, LEV_TABLE = [2, 3, 5, 10, 20];
+  const liqDist = (L) => 100 / L - LEV_MM; // yüzde
+  function leverageMap(cs) {
+    const Hs = [7, 14, 30], lv = []; for (const L of LEV_TABLE) { lv.push(-liqDist(L)); lv.push(liqDist(L)); }
+    const ms = Hs.map((H) => touchModel(cs, H, true, lv)); if (!ms[2].last) return null;
+    const grid = []; for (let L = 2; L <= 25; L += 0.5) grid.push(L);
+    const pl = (m, L) => m.last.pDown(-liqDist(L)), ps = (m, L) => m.last.pUp(liqDist(L));
+    const curves = { long: ms.map((m) => grid.map((L) => pl(m, L))), short: ms.map((m) => grid.map((L) => ps(m, L))) };
+    const gaps = ms.flatMap((m) => m.cal.map((x) => Math.abs(x.pred - x.real))), n = cs.length, hist = []; for (let i = Math.max(0, n - 365); i < n; i++) if (Number.isFinite(ms[2].yhat[i])) hist.push(ms[2].yhat[i]);
+    const pct = hist.length > 30 ? (hist.filter((x) => x <= ms[2].yhat[n - 1]).length / hist.length) * 100 : NaN;
+    return { Hs, grid, curves, price: cs[n - 1].c, ms, at: (hi, L, dir) => (dir === 'long' ? pl(ms[hi], L) : ps(ms[hi], L)), gapAvg: mean(gaps), gap: Math.max(...gaps), pct, nCal: ms[2].cal[0].n, cal: ms.map((m) => m.cal) };
   }
 
   function compute(cs) {
     if (!cs || cs.length < 400) return null;
-    const zone = zoneGauge(cs), piad = piAdaptive(cs), volad = volAdaptive(cs);
-    return { t: cs.map((k) => k.t), bow: bowTension(cs), storm: stormGauge(cs), drop: dropGauge(cs), zone, touch: touchMap(cs), piad, volad, cycle: cycleSignal(cs, zone, piad, volad), funding: null, fund: null };
+    return { t: cs.map((k) => k.t), bow: bowTension(cs), storm: stormGauge(cs), drop: dropGauge(cs), zone: zoneGauge(cs), touch: touchMap(cs), piad: piAdaptive(cs), volad: volAdaptive(cs), lev: leverageMap(cs), funding: null, fund: null };
   }
 
   /* ——— ücretsiz funding verisi (Binance vadeli genel API; erişilemezse null) ——— */
@@ -549,7 +535,21 @@
 
     if (X.piad) out.push(piAdaptiveCard(X.piad, t, ctx.c, ctx));
     if (X.volad) out.push(volAdaptiveCard(X.volad, t, ctx.c, ctx));
-    if (X.cycle) out.push(cycleCard(X.cycle, t, ctx.c, ctx));
+
+    // 1e) Kaldıraç Güvenlik Haritası
+    const lm = X.lev;
+    if (lm) {
+      const P = (x) => '$' + Math.round(x).toLocaleString('tr-TR'), pc = (v) => '%' + Math.round(v * 100), pct = lm.pct, badge = !Number.isFinite(pct) ? '–' : pct < 25 ? 'Sakin' : pct < 60 ? 'Normal' : pct < 85 ? 'Hareketli' : 'Fırtına';
+      const lq = (L, dir) => lm.price * (1 + (dir === 'long' ? -1 : 1) * liqDist(L) / 100);
+      const rows = LEV_TABLE.filter((L) => L >= 3).map((L) => `${L}x: long likidasyonu ${P(lq(L, 'long'))} (7 günde ${pc(lm.at(0, L, 'long'))}, 14 günde ${pc(lm.at(1, L, 'long'))}, 30 günde ${pc(lm.at(2, L, 'long'))}), short likidasyonu ${P(lq(L, 'short'))} (7 günde ${pc(lm.at(0, L, 'short'))}, 14 günde ${pc(lm.at(1, L, 'short'))}, 30 günde ${pc(lm.at(2, L, 'short'))})`).join('. ');
+      out.push({
+        id: 'lev', title: 'Kaldıraç Güvenlik Haritası', value: '10x: ↓' + pc(lm.at(2, 10, 'long')) + ' ↑' + pc(lm.at(2, 10, 'short')), unit: '30 günde likidasyon', badge, tone: badge === 'Fırtına' ? 'down' : badge === 'Hareketli' ? 'warn' : 'flat',
+        info: `Bugünkü fiyattan (${P(lm.price)}) N kat kaldıraçla açılan bir long veya short pozisyonun likidasyon seviyesine, önümüzdeki 7/14/30 gün içinde fiyatın HERHANGİ BİR ANDA (fitil dahil) dokunma olasılığıdır. Yatay eksen kaldıraç, dikey eksen olasılık; yeşil çizgi long (aşağı seviye), kırmızı çizgi short (yukarı seviye) için 30 günlük olasılıktır; soluk çizgiler 7 günlüktür. Likidasyon mesafesi yaklaşık %100/N − %0,5 (bakım marjini) alınmıştır; izole marjin, işlem ücreti ve funding ihmal edildi, borsanız farklı bakım marjini uyguluyorsa gerçek seviye değişir. ${rows}. Yöntem: 1/7/30/90 günlük oynaklıktan her gün yalnızca o güne kadarki veriyle öngörü ve geçmiş uç hareketlerin dağılımı. Güvenilirlik sınaması (${lm.nCal} gün, her gün o günkü bilgiyle, bütün kaldıraç seviyeleri ve ufuklar): tahmin edilen olasılık ile gerçekleşen sıklık arasındaki ortalama sapma ${Math.round(lm.gapAvg * 100)} puan, en büyük sapma ${Math.round(lm.gap * 100)} puan. Sınama pencereleri örtüştüğü için tek tek seviyelerde birkaç puanlık gürültü olur. Bu olasılık yön tahmini değildir; haber şokları ve rejim değişimleri model dışıdır. Kaldıraçlı işlem tüm sermayeyi kaybettirebilir. Yatırım tavsiyesi değildir.`,
+        cfg: { xMin: 2, fmt: (v) => Math.round(v * 100) + '%', xl: (x) => Math.round(x * 10) / 10 + 'x · ↓' + P(lq(x, 'long')) + ' ↑' + P(lq(x, 'short')), 
+          series: [{ nm: 'Long, 30 günde', f: (v) => '%' + Math.round(v * 100), x: lm.grid, y: lm.curves.long[2], color: bull, w: 2 }, { nm: 'Short, 30 günde', f: (v) => '%' + Math.round(v * 100), x: lm.grid, y: lm.curves.short[2], color: bear, w: 2 }, { nm: 'Long, 7 günde', f: (v) => '%' + Math.round(v * 100), x: lm.grid, y: lm.curves.long[0], color: 'rgba(53,214,160,.45)', w: 1, dash: [4, 3] }, { nm: 'Short, 7 günde', f: (v) => '%' + Math.round(v * 100), x: lm.grid, y: lm.curves.short[0], color: 'rgba(255,99,132,.45)', w: 1, dash: [4, 3] }],
+          refs: [{ y: 0.5, color: 'rgba(233,238,248,.3)', label: '50' }, { y: 0.1, color: 'rgba(233,238,248,.2)', label: '10' }] },
+        legend: [['Long likidasyonu (30G)', bull], ['Short likidasyonu (30G)', bear], ['7 günlük (kesikli)', 'rgba(233,238,248,.5)']] });
+    }
 
     // 2) Yay Gerilimi (varsayılan kapalı: sentetik sınamada iddiası tutmadı; ctx.showBow ile açılır)
     if (!ctx.showBow) return out;
@@ -569,5 +569,5 @@
     return out;
   }
 
-  return { compute, cards, zoneCard, touchMap, cycleSignal, piAdaptive, volAdaptive, btcCycles, loadFunding, loadFundingSeries, fundDaily, fundStats, zoneGauge, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
+  return { compute, cards, zoneCard, touchMap, leverageMap, piAdaptive, volAdaptive, btcCycles, loadFunding, loadFundingSeries, fundDaily, fundStats, zoneGauge, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
 });

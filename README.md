@@ -159,4 +159,4 @@ Pine çevirici önce hafif v1'i dener; tam çeviremezse kodu `//@beacon2` başl�
 - **Döngü Dip/Tepe Bölgeleri** yine yalnızca BTC; gerçek tepe/dipler yarılanma döngülerinden bulunur (kesikli çizgiler ilk haline döndü).
 - **Seviye Değme Olasılığı** şimdilik kapalı (`cards(X, {showTouch: true})` ile açılır).
 - **Uyarlanabilir Pi Cycle** ve **Hacim Coşku ve Teslimiyet** (Pro): eşikler ölçünün kendi son 4 yıllık yüzdeliğidir; kartta gerçek döngü tepe/diplerine karne ve yanlış alarm sayısı gösterilir.
-- **Uzun Vade Döngü Sinyali** (Pro): dört ölçünün mutabakatı (≥3/4), yönde 365 gün sessizlik; sinyal sonrası gerçekleşen en kötü/en iyi hareketler kartta raporlanır.
+- **Kaldıraç Güvenlik Haritası** (Pro): N kat kaldıraçlı long/short likidasyon seviyesine 7/14/30 günde dokunma olasılığı (kalibre, sınaması kartta).
