@@ -11,6 +11,12 @@ t('geleceğe bakmaz: kesilmiş veride aynı değerler', () => { for (const cut o
 t('son mumu değiştirmek eski tahminleri değiştirmez', () => { const c2 = cs.map((k) => ({ ...k })); c2[c2.length - 1].c *= 3; c2[c2.length - 1].h *= 3; const P = X.stormGauge(c2); for (let i = 400; i < cs.length - 10; i += 50) assert.strictEqual(P.yhat[i], S.yhat[i]); });
 t('hız: 2500 gün < 300 ms', () => { const a = Date.now(); X.stormGauge(cs); assert(Date.now() - a < 300); });
 t('compute az veriyi reddeder', () => assert.strictEqual(X.compute(cs.slice(0, 100)), null));
-t('kart şeması', () => { const R = X.compute(cs), tt = R.t, cards = X.cards(R, { t: tt, xMin: tt[0], beam: '#fc5', foam: '#eee', bull: '#3d9', bear: '#f66' }); const st = cards.find((c) => c.id === 'storm'); assert(st && /^±%/.test(st.value) && st.cfg.series.length === 2 && st.info.includes('YÖN SÖYLEMEZ')); assert(cards.find((c) => c.id === 'moon')); assert(!cards.find((c) => c.id === 'bow')); });
+t('kart şeması', () => { const R = X.compute(cs), tt = R.t, cards = X.cards(R, { t: tt, c: cs.map((k) => k.c), xMin: tt[0], beam: '#fc5', foam: '#eee', bull: '#3d9', bear: '#f66' }); const st = cards.find((c) => c.id === 'storm'); assert(st && /^±%/.test(st.value) && st.cfg.series.length === 2 && st.info.includes('YÖN SÖYLEMEZ')); assert(!cards.find((c) => c.id === 'moon') && !cards.find((c) => c.id === 'bow')); const dr = cards.find((c) => c.id === 'drop'); assert(dr && /^%-/.test(dr.value.replace('−','-')) || dr && /^%/.test(dr.value)); assert(dr.cfg.under && st.cfg.under); });
 t('ay evresi: 2000-01-06 yeni ay civarı', () => { const m = X.moonAt(Date.UTC(2000, 0, 6, 18)); assert(m.ph < 0.02 || m.ph > 0.98, JSON.stringify(m)); });
+const Dg = X.dropGauge(cs);
+t('Düşüş Tabanı: %90/%95 sınırları tutuyor', () => { assert(Math.abs(Dg.st.cov90 - .9) < .04, Dg.st.cov90); assert(Math.abs(Dg.st.cov95 - .95) < .035, Dg.st.cov95); });
+t('Düşüş Tabanı: sabit sınırdan daha dengeli (hareketli dönemde)', () => { assert(Dg.st.covHigh > Dg.st.staticHigh - 0.01 && Dg.st.covLow < Dg.st.staticLow + 0.01, JSON.stringify(Dg.st)); assert(Dg.st.ratio > 1.1); });
+t('Düşüş Tabanı: geleceğe bakmaz', () => { const P = X.dropGauge(cs.slice(0, 1500)); const same = (a, b) => (Number.isNaN(a) && Number.isNaN(b)) || Math.abs(a - b) < 1e-9; for (let i = 400; i < 1460; i += 41) assert(same(P.dn90[i], Dg.dn90[i]) && same(P.up90[i], Dg.up90[i]), 'i=' + i); });
+t('Düşüş Tabanı: sınır her zaman negatif, seviyeler sıralı', () => { assert(Dg.now < 0 && Dg.lvl.dn95 < Dg.lvl.dn90 && Dg.lvl.dn90 < Dg.price && Dg.lvl.up90 > Dg.price); });
+t('Düşüş Tabanı hız < 400 ms', () => { const a = Date.now(); X.dropGauge(cs); assert(Date.now() - a < 400); });
 console.log(ok + ' test geçti');

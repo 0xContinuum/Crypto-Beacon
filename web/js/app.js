@@ -29,7 +29,7 @@
   const haptic = (k) => { try { if (!tg || !tg.HapticFeedback) return; k === 'ok' ? tg.HapticFeedback.notificationOccurred('success') : tg.HapticFeedback.impactOccurred('light'); } catch (e) {} };
 
   /* ——— kalıcı durum (localStorage + Telegram CloudStorage) ——— */
-  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false }, form: { pivot: 10, tol: 1.5, history: true, maxForms: 120 }, proUntil: 0, ads: { d: '', n: 0 }, custom: [], ctf: [], ctfU: 0, ts: 0 };
+  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false, rej: false }, form: { pivot: 10, tol: 1.5, history: true, maxForms: 120 }, proUntil: 0, ads: { d: '', n: 0 }, custom: [], ctf: [], ctfU: 0, ts: 0 };
   let S = JSON.parse(JSON.stringify(DEF));
   try { const r = JSON.parse(localStorage.getItem('bcn') || 'null'); if (r) S = Object.assign(S, r, { layers: Object.assign({}, DEF.layers, r.layers || {}) }); } catch (e) {}
   S.form = Object.assign({}, DEF.form, S.form);
@@ -647,7 +647,7 @@
   $('ctfClose').onclick = () => closeSheet('ctfSheet');
   $('layers').addEventListener('click', (e) => {
     const b = e.target.closest('[data-l]'); if (!b) return;
-    const k = b.dataset.l; S.layers[k] = !S.layers[k]; save(); haptic(); b.setAttribute('aria-pressed', S.layers[k]); chart.setLayers(S.layers);
+    const k = b.dataset.l; if (k === 'rej' && !isPro()) { go('pro'); return; } S.layers[k] = !S.layers[k]; if (k === 'rej') applyCustom(); save(); haptic(); b.setAttribute('aria-pressed', S.layers[k]); chart.setLayers(S.layers);
   });
   $('zoomIn').onclick = () => chart.zoom(1.3); $('zoomOut').onclick = () => chart.zoom(1 / 1.3);
   $('hzShort').onclick = () => { haptic(); setTf('1h'); window.scrollTo({ top: 0, behavior: REDUCED ? 'auto' : 'smooth' }); };
@@ -704,7 +704,7 @@
     if (!ok && !D.tfsFor(sym).includes(tf)) { cur.htf[key] = false; return; }
     D.load(sym, tf, 60000).then((c) => { if (cur !== my) return; cur.htf[key] = c; applyCustom(); }).catch(() => { if (cur === my) { cur.htf[key] = false; applyCustom(); } }).finally(() => htfBusy.delete(key));
   }
-  function applyCustom() { if (!cur || !cur.data) return; cur.data.custom = customPlots(cur.candles); chart.setData(cur.data); }
+  function applyCustom() { if (!cur || !cur.data) return; let rj = []; try { if (S.layers.rej && isPro() && window.BeaconRegime) rj = window.BeaconRegime.plots(cur.candles); } catch (e) {} cur.data.custom = rj.concat(customPlots(cur.candles)); chart.setData(cur.data); }
   let fxEditing = null;
   function fxRender() {
     const pro = isPro(), list = S.custom || [];

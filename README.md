@@ -145,8 +145,9 @@ Pine çevirici önce hafif v1'i dener; tam çeviremezse kodu `//@beacon2` başl�
 ## Çizim ve ölçüm araçları
 `web/js/draw.js`: trend, ışın, yatay/dikey çizgi, paralel kanal, Fibonacci, dikdörtgen, not, cetvel (geçici), risk/ödül pozisyonu. Zaman+fiyat ile saklanır (TF değişince yerinde kalır), mıknatıs, kilit, gizle, geri al, kopyala. Ücretsiz: trend, yatay çizgi, cetvel (en çok 8 çizim); diğerleri Pro.
 
-## Piyasa göstergeleri: Fırtına Barometresi (yeni) ve sınama notları
-- **Fırtına Barometresi** (Pro): önümüzdeki 7 günde BTC hareketinin büyüklüğünü (yön değil) HAR tipi regresyonla tahmin eder; her gün yalnızca o güne kadarki veriyle yeniden uydurulur. Kartta canlı örneklem-dışı kapsama ve hata istatistikleri gösterilir.
-- **Ay Fazı Sınaması** (Pro): karıştırma testiyle ay döngüsünün etkisini sınar; dürüst "etki yok" sonucu verir.
-- **Yay Gerilimi**: kodda duruyor ama kapalı (`cards(X, {showBow:true})` ile açılır). Sentetik sınamada iddiası tutmadı.
-- Sınama: `node tools/validate_market.js --synthetic` (ağsız) veya `node tools/validate_market.js` (Binance günlük BTCUSDT ile gerçek veri). Birim testi: `node tests/marketx.test.js`.
+## Yeni göstergeler (sentetik veride sınanmış; gerçek veri sınaması için tools/validate_market.js)
+- **Fırtına Barometresi** (piyasa, Pro): 7 günlük hareket büyüklüğü tahmini (yön değil). Kartta imleç/dokunuşla gün seçilir; altta BTC fiyatı aynı eksende.
+- **Düşüş Tabanı** (piyasa, Pro): 30 günde bugünkü fiyattan en kötü düşüş (%90/%95) ve en iyi yükseliş sınırı; stop/kaldıraç mesafesi için. Sabit sınıra göre sakin/hareketli döneme uyar.
+- **Beacon Rejim** (grafik katmanı, Pro): oynaklığa göre standartlaştırılmış getirilerde kayan Varyans Oranı. Yeşil/kırmızı: trend, mavi: geri dönüş, gri: belirsiz.
+- Ay Fazı Sınaması kaldırıldı. Yay Gerilimi kodda duruyor ama kapalı (`showBow:true` ile açılır).
+- Testler: `node tests/marketx.test.js`, `node tests/regime.test.js`, `node tests/view.test.js`.

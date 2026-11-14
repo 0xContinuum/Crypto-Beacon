@@ -42,6 +42,20 @@ ok(sh < 0, 'grafik sağa boşluğa kaydırılabilir (shift=' + sh.toFixed(1) + '
     const tip = await pg.evaluate(() => { const t = document.getElementById('tip'), r = t.getBoundingClientRect(), rail = document.querySelector('.drail, #drawRail, .dr-rail'); return { on: t.classList.contains('on'), left: r.left, railRight: rail ? rail.getBoundingClientRect().right : 0, wrapLeft: document.getElementById('chartwrap').getBoundingClientRect().left }; });
     ok(tip.left - tip.wrapLeft >= 50, 'bilgi yazısı sol araç çubuğunun üstüne binmez (sol boşluk ' + Math.round(tip.left - tip.wrapLeft) + 'px)');
     await pg.screenshot({ path: path.join(SHOTS, 'view-blank.png') });
+    // Pro: Rejim göstergesi ve piyasa kartları
+    await pg.evaluate(() => localStorage.setItem('bcn', JSON.stringify({ legal: true, proUntil: Date.now() + 36e5 }))); await pg.reload(); await pg.waitForFunction(() => window.__beacon && window.__beacon.cur() && window.__beacon.cur().data, null, { timeout: 8000 }); await sleep(600);
+    await pg.click('[data-l="rej"]'); await sleep(500);
+    const rj = await pg.evaluate(() => { const c = window.__beacon.cur().data.custom || []; return { n: c.length, hist: c.some((x) => x.style === 'histogram' && x.values.some(Number.isFinite)) }; });
+    ok(rj.n >= 3 && rj.hist, 'Rejim katmanı alt panelde histogram çizer');
+    await pg.screenshot({ path: path.join(SHOTS, 'view-rejim.png') });
+    await pg.click('[data-l="rej"]'); await sleep(300); ok((await pg.evaluate(() => (window.__beacon.cur().data.custom || []).length)) === 0, 'Rejim kapatılınca panel kalkar');
+    await pg.click('#dock [data-v="market"]'); await pg.waitForSelector('.mk', { timeout: 8000 }); await sleep(900);
+    ok(await pg.locator('.mk[data-id="storm"]').count() === 1 && await pg.locator('.mk[data-id="drop"]').count() === 1 && await pg.locator('.mk[data-id="moon"]').count() === 0, 'Fırtına ve Düşüş Tabanı kartları var, Ay kartı yok');
+    const cvs = pg.locator('.mk[data-id="storm"] canvas'); await cvs.scrollIntoViewIfNeeded(); const cb = await cvs.boundingBox();
+    const hash = async () => pg.evaluate(() => { const c = document.querySelector('.mk[data-id="storm"] canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0; for (let i = 0; i < d.length; i += 97) h = (h * 31 + d[i]) | 0; return h; });
+    const h0 = await hash(); await pg.mouse.move(cb.x + cb.width * 0.6, cb.y + cb.height * 0.4); await sleep(150); const h1 = await hash();
+    ok(h0 !== h1, 'Fırtına kartında imleç tarih/değer ipucunu çizer'); await pg.screenshot({ path: path.join(SHOTS, 'view-storm-hover.png') });
+    await pg.mouse.move(5, 5); await sleep(150); ok((await hash()) === h0, 'imleç ayrılınca ipucu kalkar');
     ok(errors.length === 0, 'sayfa hatası yok ' + errors.join('|'));
   } finally { await browser.close(); srv.close(); }
   console.log(n + ' test geçti');

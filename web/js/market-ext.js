@@ -168,9 +168,62 @@
     return { yhat, sig7, half80, real7, q, st, now, pct, mult, price: c[last], H };
   }
 
+
+  /* ——— Düşüş Tabanı: önümüzdeki 30 günde bugünkü fiyattan en kötü düşüş (ve en iyi yükseliş) ———
+     Fırtına Barometresi bitiş fiyatına bakar; bu ise yolun en uç noktasına bakar: "stop/likidasyon nereye kadar gelebilir?"
+     Hedef: ln(en düşük / bugünkü kapanış) ve ln(en yüksek / bugünkü kapanış), 30 gün boyunca.
+     Ölçek: Fırtına ile aynı HAR oynaklık tahmini (30 gün ufuklu, genişleyen pencere); sınır: geçmiş standartlaştırılmış uç hareketlerin yüzdelikleri. */
+  function dropGauge(cs, opt) {
+    const H = (opt && opt.H) || 30, n = cs.length, LN2 = Math.log(2), MINTRAIN = (opt && opt.minTrain) || 250, W0 = 89, K = 5;
+    const c = cs.map((k) => k.c), v = cs.map((k) => { const r = Math.log(k.h / Math.max(k.l, 1e-12)); return Math.max(r * r / (4 * LN2), 1e-10); });
+    const cum = [0]; for (let i = 0; i < n; i++) cum.push(cum[i] + v[i]);
+    const rv = (i, k) => Math.sqrt((cum[i + 1] - cum[i + 1 - k]) / k);
+    const feat = (i) => [1, Math.log(rv(i, 1)), Math.log(rv(i, 7)), Math.log(rv(i, 30)), Math.log(rv(i, 90))];
+    const yOf = (i) => Math.log(Math.sqrt((cum[i + H + 1] - cum[i + 1]) / H));
+    const XtX = Array.from({ length: K }, () => new Array(K).fill(0)), Xty = new Array(K).fill(0);
+    const yhat = new Array(n).fill(NaN), mk = () => new Array(n).fill(NaN), q = { dn90: mk(), dn95: mk(), up90: mk(), up95: mk() };
+    const sD = [], sU = []; let rows = 0;
+    const ins = (arr, z) => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < z) lo = m + 1; else hi = m; } arr.splice(lo, 0, z); };
+    const quant = (arr, p) => arr[Math.max(0, Math.min(arr.length - 1, Math.floor(p * arr.length)))];
+    const ext = (i) => { let lo = Infinity, hi = -Infinity; for (let j = i + 1; j <= i + H; j++) { if (cs[j].l < lo) lo = cs[j].l; if (cs[j].h > hi) hi = cs[j].h; } return [Math.log(Math.min(lo, c[i]) / c[i]), Math.log(Math.max(hi, c[i]) / c[i])]; };
+    for (let t = W0; t < n; t++) {
+      const s = t - H;
+      if (s >= W0) {
+        const x = feat(s), y = yOf(s); rows++;
+        for (let a = 0; a < K; a++) { Xty[a] += x[a] * y; for (let b = 0; b < K; b++) XtX[a][b] += x[a] * x[b]; }
+        if (Number.isFinite(yhat[s])) { const [d, u] = ext(s), sc = Math.exp(yhat[s]) * Math.sqrt(H); if (Number.isFinite(d / sc)) { ins(sD, d / sc); ins(sU, u / sc); } }
+      }
+      if (rows >= MINTRAIN) {
+        const A = XtX.map((r, i) => r.map((x, j) => x + (i === j && i > 0 ? 1e-6 : 0))), beta = solve4(A, Xty);
+        if (beta) { yhat[t] = feat(t).reduce((a, b, i) => a + b * beta[i], 0); if (sD.length >= 120) { q.dn90[t] = quant(sD, 0.10); q.dn95[t] = quant(sD, 0.05); q.up90[t] = quant(sU, 0.90); q.up95[t] = quant(sU, 0.95); } }
+      }
+    }
+    const sig = yhat.map((y) => (Number.isFinite(y) ? Math.exp(y) * Math.sqrt(H) : NaN));
+    const dn = (k, arr) => (Number.isFinite(sig[k]) && Number.isFinite(arr[k]) ? (Math.exp(arr[k] * sig[k]) - 1) * 100 : NaN); // % (negatif)
+    const dn90 = c.map((_, k) => dn(k, q.dn90)), dn95 = c.map((_, k) => dn(k, q.dn95)), up90 = c.map((_, k) => (Number.isFinite(sig[k]) && Number.isFinite(q.up90[k]) ? (Math.exp(q.up90[k] * sig[k]) - 1) * 100 : NaN));
+    const worst = c.map((_, k) => { if (k < H) return NaN; let lo = Infinity; for (let j = k - H + 1; j <= k; j++) if (cs[j].l < lo) lo = cs[j].l; return (Math.min(lo, c[k - H]) / c[k - H] - 1) * 100; }); // k'de biten pencerenin gerçekleşen en kötü düşüşü
+    // ——— dürüst değerlendirme (tahmin anında bilinenle) ———
+    const idx = []; for (let t = W0; t + H < n; t++) if (Number.isFinite(dn90[t])) idx.push(t);
+    const st = { n: idx.length, cov90: NaN, cov95: NaN, covUp90: NaN, covLow: NaN, covMid: NaN, covHigh: NaN, staticLow: NaN, staticHigh: NaN, ratio: NaN };
+    if (idx.length >= 200) {
+      const hit = (t, lim) => (ext(t)[0] >= Math.log(1 + lim / 100) ? 1 : 0);
+      st.cov90 = mean(idx.map((t) => hit(t, dn90[t]))); st.cov95 = mean(idx.map((t) => hit(t, dn95[t])));
+      st.covUp90 = mean(idx.map((t) => (ext(t)[1] <= Math.log(1 + up90[t] / 100) ? 1 : 0)));
+      const ord = idx.slice().sort((a, b) => yhat[a] - yhat[b]), th = Math.floor(ord.length / 3), lowT = ord.slice(0, th), highT = ord.slice(-th), midT = ord.slice(th, ord.length - th);
+      st.covLow = mean(lowT.map((t) => hit(t, dn90[t]))); st.covMid = mean(midT.map((t) => hit(t, dn90[t]))); st.covHigh = mean(highT.map((t) => hit(t, dn90[t])));
+      // karşılaştırma: tek bir sabit sınır (tüm geçmişin %10'luk dilimi) sakin/hareketli dönemlerde ne yapardı
+      const all = idx.map((t) => ext(t)[0]).sort((a, b) => a - b), fx = all[Math.floor(0.10 * all.length)];
+      st.staticLow = mean(lowT.map((t) => (ext(t)[0] >= fx ? 1 : 0))); st.staticHigh = mean(highT.map((t) => (ext(t)[0] >= fx ? 1 : 0)));
+      st.ratio = mean(highT.map((t) => -ext(t)[0])) / mean(lowT.map((t) => -ext(t)[0]));
+    }
+    const last = n - 1, now = dn90[last], rec = dn90.slice(Math.max(0, n - 365)).filter(Number.isFinite), pct = Number.isFinite(now) && rec.length > 30 ? (rec.filter((x) => x >= now).length / rec.length) * 100 : NaN; // yüksek yüzdelik = sınır daha derin = risk yüksek
+    const lv = (arr) => (Number.isFinite(sig[last]) && Number.isFinite(arr[last]) ? c[last] * Math.exp(arr[last] * sig[last]) : NaN);
+    return { yhat, dn90, dn95, up90, worst, st, now, pct, price: c[last], H, lvl: { dn90: lv(q.dn90), dn95: lv(q.dn95), up90: lv(q.up90) } };
+  }
+
   function compute(cs) {
     if (!cs || cs.length < 400) return null;
-    return { t: cs.map((k) => k.t), moon: moonTest(cs), bow: bowTension(cs), storm: stormGauge(cs), funding: null };
+    return { t: cs.map((k) => k.t), bow: bowTension(cs), storm: stormGauge(cs), drop: dropGauge(cs), funding: null };
   }
 
   /* ——— ücretsiz funding verisi (Binance vadeli genel API; erişilemezse null) ——— */
@@ -188,7 +241,7 @@
 
   /* ——— kartlar (market-ui.js'teki cards() ile aynı şema) ——— */
   function cards(X, ctx) {
-    const { t, xMin, beam, foam, bull, bear } = ctx, out = [], mo = X.moon, bw = X.bow, N = t.length;
+    const { t, xMin, beam, foam, bull, bear } = ctx, out = [], bw = X.bow, N = t.length;
 
     // 0) Fırtına Barometresi
     const sg = X.storm;
@@ -199,21 +252,23 @@
       out.push({
         id: 'storm', title: 'Fırtına Barometresi', value: '±%' + fmt1(sg.now), unit: sg.H + ' günde, %80 olasılıkla', badge, tone: tn,
         info: `Önümüzdeki ${sg.H} günde BTC'nin ne kadar oynayabileceğini tahmin eder; YÖN SÖYLEMEZ. Oynaklık kümelenir: hareketli dönemi hareketli, sakin dönemi sakin günler izler. Günlük en yüksek/en düşük aralıktan, o güne kadarki veriyle (genişleyen pencere, geleceğe bakmadan) 1, 7, 30 ve 90 günlük oynaklıktan regresyonla öngörülür; bant geçmiş tahmin hatalarının yüzdeliklerinden gelir. Şu anki tahmin: %80 olasılıkla ${P(sg.mult.lo80)} – ${P(sg.mult.hi80)}, %95 olasılıkla ${P(sg.mult.lo95)} – ${P(sg.mult.hi95)} (fiyat ${P(1)}). Son 365 günün %${Math.round(pc || 0)}'inden daha yüksek bir genişlikte. ${okSt ? `Örneklem dışı sınama (${st.n} gün): %80 bant gerçek hareketleri %${Math.round(st.cov80 * 100)}, %95 bant %${Math.round(st.cov95 * 100)} oranında içine aldı (hedef 80/95). Tahmin ile gerçekleşen arasındaki korelasyon ${fmt2(st.corr)}; ortalama oynaklığı varsaymaya göre hata ${Math.round(st.r2vsMean * 100)}%, son 30 günü varsaymaya göre ${Math.round(st.r2vsNaive * 100)}% azaldı. "Hareketli" ucun üçte biri, "sakin" ucun üçte birinden ortalama ${fmt1(st.ratio)} kat büyük hareket yaptı.` : 'Sınama için veri yetersiz.'} Beklenmedik haber şokları bandın dışına taşabilir; bu bir risk büyüklüğü ve pozisyon boyutu aracıdır, al-sat sinyali değildir.`,
-        cfg: { xMin, fmt: (v) => '±' + v.toFixed(0) + '%', series: [{ x: t, y: sg.real7.map((v, k) => (Number.isFinite(sg.half80[k]) ? v : NaN)), color: 'rgba(233,238,248,.35)', w: 1 }, { x: t, y: sg.half80, color: beam, w: 1.8 }], now: { x: t[N - 1], y: sg.now } },
-        legend: [['Beklenen genişlik (%80)', beam], ['Gerçekleşen 7G hareket', 'rgba(233,238,248,.5)']] });
+        cfg: { xMin, fmt: (v) => '±' + v.toFixed(0) + '%', under: { x: t, y: ctx.c },
+          series: [{ nm: 'Gerçekleşen ' + sg.H + 'G hareket', f: (v) => '±%' + fmt1(v), x: t, y: sg.real7.map((v, k) => (Number.isFinite(sg.half80[k - sg.H]) ? v : NaN)), color: 'rgba(233,238,248,.4)', w: 1 }, { nm: 'Tahmin (' + sg.H + ' gün önceden)', f: (v) => '±%' + fmt1(v), x: t, y: sg.half80.map((v, k) => (k >= sg.H ? sg.half80[k - sg.H] : NaN)), color: beam, w: 1.8 }], now: { x: t[N - 1], y: sg.now } },
+        legend: [['Tahmin edilen genişlik (%80)', beam], ['Gerçekleşen 7G hareket', 'rgba(233,238,248,.5)'], ['BTC fiyatı (altta)', '#fff']] });
     }
 
-    // 1) Ay Fazı Sınaması
-    const alpha = 0.05 / 2; // iki döngü test edildi: Bonferroni
-    const sig = mo.ph.p < alpha, sigAn = mo.an.p < alpha, pTxt = (p) => 'p = ' + fmt2(p);
-    const bestBin = mo.ph.means.reduce((b, v, i, a) => (Math.abs(v) > Math.abs(a[b]) ? i : b), 0);
-    out.push({
-      id: 'moon', title: 'Ay Fazı Sınaması', value: sig ? 'Etki saptandı' : 'Etki yok', unit: pTxt(mo.ph.p), badge: mo.name + ' · %' + Math.round(mo.illum * 100), tone: sig ? 'warn' : 'flat',
-      info: `Ay'ın 8 evresinin her birinde BTC'nin sonraki ${mo.H} günlük getirisi ortalaması çizilir (sarı). Kesikli bantlar, evreler rastgele kaydırılsaydı beklenen %95 aralıktır: sarı çizgi bantların içindeyse fark tesadüftür. Sınama ${mo.n} günde, 1.500 karıştırmayla yapıldı. Faz döngüsü: ${pTxt(mo.ph.p)}; Ay'ın yakınlık döngüsü (27,55 gün): ${pTxt(mo.an.p)}. İki döngü sınandığı için eşik 0,025'tir${sig || sigAn ? '; eşiği geçen sonuç bile çoklu sınama ve veri azlığı nedeniyle tek başına işlem gerekçesi sayılmaz' : '; ikisi de eşiği geçmedi, yani bu veride gök döngüsü ile fiyat arasında kanıtlanabilir bir bağ yok'}. En büyük sapma ${PHASES[bestBin]} evresinde (${fmt2(mo.ph.means[bestBin])}%). Evre hesabı ortalama gök elemanlarına dayanır; gün düzeyinde yeterince doğrudur.`,
-      cfg: { xMin: 0, fmt: (v) => v.toFixed(1) + '%', xl: (x) => PHASES[Math.round(x * 8) % 8],
-        series: [{ x: mo.x, y: mo.hi, color: 'rgba(233,238,248,.45)', w: 1, dash: [4, 4] }, { x: mo.x, y: mo.lo, color: 'rgba(233,238,248,.45)', w: 1, dash: [4, 4] }, { x: mo.x, y: mo.mean, color: beam, w: 2 }],
-        refs: [{ y: 0, color: 'rgba(233,238,248,.4)', label: '0' }], now: { x: mo.nowBin / mo.B, y: mo.mean[mo.nowBin] } },
-      legend: [['Evreye göre ort. getiri', beam], ['Tesadüf bandı (%95)', 'rgba(233,238,248,.6)']] });
+    // 1) Düşüş Tabanı
+    const dg = X.drop;
+    if (dg && Number.isFinite(dg.now) && Number.isFinite(dg.lvl.dn90)) {
+      const st = dg.st, pc = dg.pct, badge = !Number.isFinite(pc) ? '–' : pc < 25 ? 'Düşük risk' : pc < 60 ? 'Normal' : pc < 85 ? 'Yüksek risk' : 'Aşırı risk', P = (x) => '$' + Math.round(x).toLocaleString('tr-TR');
+      const okSt = st && st.n >= 200;
+      out.push({
+        id: 'drop', title: 'Düşüş Tabanı', value: '%' + fmt1(dg.now), unit: dg.H + ' günde en kötü düşüş, %90 olasılıkla bundan az', badge, tone: badge === 'Aşırı risk' ? 'down' : badge === 'Yüksek risk' ? 'warn' : 'flat',
+        info: `Bugünkü fiyattan (${P(dg.price)}) başlayıp önümüzdeki ${dg.H} gün içinde fiyatın İNEBİLECEĞİ en düşük seviyeyi tahmin eder: %90 olasılıkla ${P(dg.lvl.dn90)} altına inmez, %95 olasılıkla ${P(dg.lvl.dn95)} altına inmez. Yukarıda aynı pencerede %90 olasılıkla ${P(dg.lvl.up90)} üstüne çıkmaz. Fırtına Barometresi sürenin sonundaki mesafeye bakar; bu ise yol boyunca değen en uç noktaya bakar, yani stop, kaldıraç ve likidasyon mesafesini seçerken işe yarar. Yön söylemez. Ölçek, 1/7/30/90 günlük oynaklıktan her gün yalnızca o güne kadarki veriyle uydurulan regresyondan, sınır ise geçmiş uç hareketlerin yüzdeliklerinden gelir. ${okSt ? `Örneklem dışı sınama (${st.n} gün): gerçek en kötü düşüş %90 sınırını ${'%' + Math.round(st.cov90 * 100)}, %95 sınırını ${'%' + Math.round(st.cov95 * 100)} oranında aşmadı (hedef 90/95). Sakin dönemlerde ${'%' + Math.round(st.covLow * 100)}, hareketli dönemlerde ${'%' + Math.round(st.covHigh * 100)}; tek bir sabit sınır kullanılsaydı aynı dönemlerde ${'%' + Math.round(st.staticLow * 100)} ve ${'%' + Math.round(st.staticHigh * 100)} tutardı, yani sabit sınır sakinde gereksiz geniş, hareketlide yetersiz kalırdı.` : 'Sınama için veri yetersiz.'} Ani haber şokları sınırın dışına taşabilir; bu bir risk büyüklüğü aracıdır, al-sat sinyali değildir.`,
+        cfg: { xMin, fmt: (v) => v.toFixed(0) + '%', under: { x: t, y: ctx.c },
+          series: [{ nm: 'Gerçekleşen en kötü düşüş', f: (v) => '%' + fmt1(v), x: t, y: dg.worst.map((v, k) => (k >= dg.H && Number.isFinite(dg.dn90[k - dg.H]) ? v : NaN)), color: 'rgba(233,238,248,.4)', w: 1 }, { nm: 'Tahmin edilen taban (%90)', f: (v) => '%' + fmt1(v), x: t, y: dg.dn90.map((v, k) => (k >= dg.H ? dg.dn90[k - dg.H] : NaN)), color: bear, w: 1.8 }], now: { x: t[N - 1], y: dg.now } },
+        legend: [['Tahmin edilen taban (%90)', bear], ['Gerçekleşen en kötü düşüş', 'rgba(233,238,248,.5)'], ['BTC fiyatı (altta)', '#fff']] });
+    }
 
     // 2) Yay Gerilimi (varsayılan kapalı: sentetik sınamada iddiası tutmadı; ctx.showBow ile açılır)
     if (!ctx.showBow) return out;
@@ -233,5 +288,5 @@
     return out;
   }
 
-  return { compute, cards, loadFunding, moonAt, PHASES, stormGauge, moonTest, bowTension };
+  return { compute, cards, loadFunding, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
 });

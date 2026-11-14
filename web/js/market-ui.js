@@ -13,13 +13,14 @@
   const css = (n, f) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || f;
 
   /* ——— küçük çizgi grafik ——— */
-  function mini(cv, cfg, big) {
+  function mini(cv, cfg, big, hov) {
+    cv._m = { cfg, big };
     const FS = big ? 1.35 : 1;
     const dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth, H = cv.clientHeight; if (!W) return;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
     const font = css('--font', 'Inter, system-ui, sans-serif'), fog = css('--fog', '#7e8ba6'), grid = css('--grid', '#121b2e');
-    const axisW = 52 * FS, padB = 18 * FS, pw = W - axisW, ph = H - padB, log = cfg.log;
+    const axisW = 52 * FS, padB = 18 * FS, pw = W - axisW, phAll = H - padB, under = cfg.under && cfg.under.x && cfg.under.x.length, ph = under ? Math.round((phAll - 8) * 0.6) : phAll, log = cfg.log;
     let x0 = Infinity, x1 = -Infinity, lo = Infinity, hi = -Infinity;
     const inR = (x) => x >= cfg.xMin;
     for (const s of cfg.series) for (let i = 0; i < s.x.length; i++) { if (!inR(s.x[i])) continue; if (s.x[i] < x0) x0 = s.x[i]; if (s.x[i] > x1) x1 = s.x[i]; }
@@ -44,14 +45,45 @@
       }
     }
     for (const r of cfg.refs || []) { const y = Math.round(Y(r.y)) + 0.5; c.strokeStyle = r.color; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(0, y); c.lineTo(pw, y); c.stroke(); c.setLineDash([]); c.fillStyle = r.color; c.textAlign = 'left'; c.fillText(r.label, 4, y - 7); c.textAlign = 'right'; }
-    for (const m of cfg.marks || []) { if (!inR(m.x)) continue; const x = Math.round(X(m.x)) + 0.5; c.strokeStyle = m.color; c.setLineDash([2, 3]); c.beginPath(); c.moveTo(x, 0); c.lineTo(x, ph); c.stroke(); c.setLineDash([]); }
+    for (const m of cfg.marks || []) { if (!inR(m.x)) continue; const x = Math.round(X(m.x)) + 0.5; c.strokeStyle = m.color; c.setLineDash([2, 3]); c.beginPath(); c.moveTo(x, 0); c.lineTo(x, phAll); c.stroke(); c.setLineDash([]); }
     for (const s of cfg.series) {
       c.beginPath(); let st = false;
       for (let i = 0; i < s.x.length; i++) { const v = s.y[i]; if (!inR(s.x[i]) || !Number.isFinite(v) || (log && v <= 0)) { st = false; continue; } const x = X(s.x[i]), y = Y(v); st ? c.lineTo(x, y) : c.moveTo(x, y); st = true; }
       c.strokeStyle = s.color; c.lineWidth = s.w || 1.5; c.setLineDash(s.dash || []); c.stroke(); c.setLineDash([]);
     }
     if (cfg.now) { const x = X(cfg.now.x), y = Y(cfg.now.y); c.fillStyle = css('--beam', '#ffc25c'); c.beginPath(); c.arc(x, y, 3.5, 0, 7); c.fill(); }
-    c.textBaseline = 'top'; c.fillStyle = fog; c.textAlign = 'left'; c.fillText(cfg.xl ? cfg.xl(x0) : dstr(x0), 2, ph + 5); c.textAlign = 'right'; c.fillText(cfg.xl ? cfg.xl(x1) : dstr(x1), pw, ph + 5);
+    let Y2 = null;
+    if (under) { // altta BTC fiyatı (log), aynı tarih ekseni
+      const u = cfg.under, t0 = ph + 8, t1 = phAll; let l2 = Infinity, h2 = -Infinity;
+      for (let i = 0; i < u.x.length; i++) if (inR(u.x[i]) && u.y[i] > 0) { const v = Math.log(u.y[i]); if (v < l2) l2 = v; if (v > h2) h2 = v; }
+      const sp2 = (h2 - l2) * 0.06 || 1; Y2 = (v) => t0 + 2 + (1 - (Math.log(Math.max(v, 1e-9)) - (l2 - sp2)) / (h2 - l2 + 2 * sp2)) * (t1 - t0 - 4);
+      c.strokeStyle = css('--rule', '#1a2438'); c.beginPath(); c.moveTo(0, t0 - 4.5); c.lineTo(W, t0 - 4.5); c.stroke();
+      c.beginPath(); let st = false; for (let i = 0; i < u.x.length; i++) { if (!inR(u.x[i]) || !(u.y[i] > 0)) { st = false; continue; } const x = X(u.x[i]), y = Y2(u.y[i]); st ? c.lineTo(x, y) : c.moveTo(x, y); st = true; }
+      c.strokeStyle = 'rgba(233,238,248,.85)'; c.lineWidth = 1.2; c.stroke();
+      c.fillStyle = fog; c.textAlign = 'right'; c.textBaseline = 'middle'; for (const v of [Math.exp(h2), Math.exp(l2)]) c.fillText(fmtUsd(v), W - 4, Y2(v));
+      c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText('BTC fiyatı', 4, t0 + 1);
+    }
+    if (hov != null && hov >= 0 && hov <= pw) { // imleç: o günün değerleri
+      const xv = x0 + ((hov - 2) / (pw - 4)) * (x1 - x0), near = (xs) => { let lo2 = 0, hi2 = xs.length - 1; while (lo2 < hi2) { const m = (lo2 + hi2) >> 1; if (xs[m] < xv) lo2 = m + 1; else hi2 = m; } return lo2 > 0 && Math.abs(xs[lo2 - 1] - xv) < Math.abs(xs[lo2] - xv) ? lo2 - 1 : lo2; };
+      const lines = []; let tx = null;
+      for (const sr of cfg.series) { if (!sr.nm || sr.noTip) continue; const k = near(sr.x), v = sr.y[k]; if (!Number.isFinite(v)) continue; tx = tx == null ? sr.x[k] : tx; const xx = X(sr.x[k]), yy = Y(v); c.fillStyle = sr.color; c.beginPath(); c.arc(xx, yy, 3, 0, 7); c.fill(); lines.push([sr.nm, sr.f ? sr.f(v) : fmtUsd(v), sr.color]); }
+      if (cfg.under) { const k = near(cfg.under.x); if (tx == null) tx = cfg.under.x[k]; if (Y2) { c.fillStyle = '#fff'; c.beginPath(); c.arc(X(cfg.under.x[k]), Y2(cfg.under.y[k]), 3, 0, 7); c.fill(); } lines.push(['BTC', '$' + fmtUsd(cfg.under.y[k]), '#fff']); }
+      if (tx != null) {
+        const hx = Math.round(X(tx)) + 0.5; c.strokeStyle = 'rgba(233,238,248,.45)'; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(hx, 0); c.lineTo(hx, phAll); c.stroke(); c.setLineDash([]);
+        const f2 = 10.5 * FS, lh = 14 * FS, title = ds(tx); c.font = `600 ${f2}px ${font}`; let bw = c.measureText(title).width; for (const [n, v] of lines) bw = Math.max(bw, c.measureText(n + ': ' + v).width); bw += 14;
+        const bh = (lines.length + 1) * lh + 8, bx = hx > pw / 2 ? hx - bw - 8 : hx + 8, by = 4; c.fillStyle = 'rgba(6,10,18,.92)'; c.strokeStyle = 'rgba(233,238,248,.25)'; c.beginPath(); c.roundRect ? c.roundRect(bx, by, bw, bh, 6) : c.rect(bx, by, bw, bh); c.fill(); c.stroke();
+        c.textAlign = 'left'; c.textBaseline = 'top'; c.fillStyle = '#e9eef8'; c.fillText(title, bx + 7, by + 5); let yy = by + 5 + lh;
+        for (const [n, v, col] of lines) { c.fillStyle = col; c.fillText(n + ': ' + v, bx + 7, yy); yy += lh; }
+      }
+    }
+    c.textBaseline = 'top'; c.fillStyle = fog; c.textAlign = 'left'; c.font = `500 ${10 * FS}px ${font}`; c.fillText(cfg.xl ? cfg.xl(x0) : dstr(x0), 2, phAll + 5); c.textAlign = 'right'; c.fillText(cfg.xl ? cfg.xl(x1) : dstr(x1), pw, phAll + 5);
+  }
+  function hoverable(cv) { // fare/dokunma ile gün seçimi
+    if (cv._hv) return; cv._hv = 1;
+    const go = (e) => { const r = cv.getBoundingClientRect(); if (cv._m) mini(cv, cv._m.cfg, cv._m.big, e.clientX - r.left); };
+    cv.addEventListener('pointermove', go); cv.addEventListener('pointerdown', go);
+    cv.addEventListener('pointerleave', () => { if (cv._m) mini(cv, cv._m.cfg, cv._m.big, null); });
+    cv.style.touchAction = 'pan-y';
   }
 
   /* ——— kart tanımları ——— */
@@ -82,7 +114,7 @@
           info: `Son halving 20 Nisan 2024. Çizgiler, halving gününün fiyatına göre çarpan olarak gösterilir: soluk çizgi önceki (2020) döngü, sarı çizgi bugünkü döngü. Şu an halving fiyatının ${fmtX(h.multiple)} seviyesinde. ATH ${h.athDays} gün önce görüldü ($${fmtUsd(h.ath)}). Sonraki halving tahmini 2028 baharı (${h.daysToNext} gün). Döngüler tekrar etmek zorunda değildir.`,
           cfg: { log: true, xMin: 0, xl: (x) => Math.round(x) + '. gün', fmt: (v) => v.toFixed(v < 10 ? 1 : 0) + '×', series, now: series.length ? { x: series[series.length - 1].x.length - 1, y: series[series.length - 1].y[series[series.length - 1].y.length - 1] } : null }, legend: cyc.map((cy, i) => [new Date(cy.start).getFullYear() + ' döngüsü', col[i % 2]]) };
       })(),
-      ...(r.x && window.BeaconMarketX ? window.BeaconMarketX.cards(r.x, { t, xMin, beam, foam, bull, bear }) : []),
+      ...(r.x && window.BeaconMarketX ? window.BeaconMarketX.cards(r.x, { t, c, xMin, beam, foam, bull, bear }) : []),
     ];
   }
 
@@ -99,7 +131,7 @@
         <div class="lg">${k.legend.map(([n, c]) => `<span><i style="background:${c}"></i>${esc(n)}</span>`).join('')}</div>
         <p class="note">${lock ? 'Bu gösterge Pro ile açılır. Reklam izleyerek Pro kazanabilirsiniz.' : esc(k.info)}</p></article>`; }).join('') +
       '<p class="note pad">Bu göstergeler eğitim amaçlıdır; yatırım tavsiyesi değildir. Geçmiş davranış gelecekte tekrar etmeyebilir.</p>';
-    requestAnimationFrame(() => cs.forEach((k) => { const cv = box.querySelector(`[data-id="${k.id}"] canvas`); if (cv) mini(cv, k.cfg); }));
+    requestAnimationFrame(() => cs.forEach((k) => { const cv = box.querySelector(`[data-id="${k.id}"] canvas`); if (cv) { mini(cv, k.cfg); hoverable(cv); } }));
   }
 
   async function load() {
@@ -119,7 +151,7 @@
     $('mfTitle').textContent = k.title; $('mfVal').textContent = k.value + (k.unit ? '  ' + k.unit : ''); $('mfBadge').textContent = k.badge; $('mfBadge').className = 'badge ' + k.tone;
     $('mfInfo').textContent = k.info; $('mfLegend').innerHTML = k.legend.map(([n, c]) => `<span><i style="background:${c}"></i>${esc(n)}</span>`).join('');
     $('mfRange').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.r === range));
-    requestAnimationFrame(() => mini($('mfCv'), k.cfg, true));
+    requestAnimationFrame(() => { mini($('mfCv'), k.cfg, true); hoverable($('mfCv')); $('mfCv').style.touchAction = 'none'; });
   }
   function openFull(id) { fullId = id; $('mkFull').classList.add('on'); document.body.classList.add('fsmode'); drawFull(); }
   function closeFull() { fullId = ''; $('mkFull').classList.remove('on'); document.body.classList.remove('fsmode'); }
