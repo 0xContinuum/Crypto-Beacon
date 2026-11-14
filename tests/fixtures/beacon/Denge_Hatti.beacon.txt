@@ -1,0 +1,48 @@
+//@beacon2
+// Beacon Denge Hattı: son onaylı dip/tepe pivotundan başlayan hacim ağırlıklı ortalama (anchored VWAP) ve ±1σ / ±2σ bantları.
+// Yeşil hat: son pivot dipti (alıcı bağlamı), kırmızı hat: son pivot tepeydi (satıcı bağlamı).
+// Üçgenler: fiyat ±2σ bandına dokunup bandın içine geri kapanırsa (reddedilme).
+indicator("Beacon Denge Hattı", overlay=true)
+
+pl = input.int(8, "Pivot sol/sağ mum", minval=2)
+k2 = input.float(2.0, "Dış bant (σ)", minval=1.0)
+
+ph = ta.pivothigh(high, pl, pl)
+pw = ta.pivotlow(low, pl, pl)
+
+var float sv = 0.0
+var float sp = 0.0
+var float sq = 0.0
+var int dir = 0
+
+if not na(pw) or not na(ph)
+    dir := not na(pw) ? 1 : -1
+    sv := 0.0
+    sp := 0.0
+    sq := 0.0
+    for k = 0 to pl
+        p = hlc3[k]
+        v = volume[k]
+        sv += v
+        sp += p * v
+        sq += p * p * v
+else
+    sv += volume
+    sp += hlc3 * volume
+    sq += hlc3 * hlc3 * volume
+
+vw = sv > 0 ? sp / sv : na
+sd = sv > 0 ? math.sqrt(math.max(sq / sv - vw * vw, 0)) : na
+col = dir == 1 ? color.new(color.lime, 0) : dir == -1 ? color.new(color.red, 0) : color.gray
+
+mid = plot(vw, "Denge", col, 2)
+u1 = plot(vw + sd, "+1σ", color.new(col, 60))
+l1 = plot(vw - sd, "-1σ", color.new(col, 60))
+u2 = plot(vw + k2 * sd, "+2σ", color.new(col, 30))
+l2 = plot(vw - k2 * sd, "-2σ", color.new(col, 30))
+fill(u1, l1, color.new(col, 90))
+
+dipRed = not na(sd) and low <= vw - k2 * sd and close > vw - k2 * sd
+tepeRed = not na(sd) and high >= vw + k2 * sd and close < vw + k2 * sd
+plotshape(dipRed, "Alt reddedilme", shape.triangleup, location.belowbar, color.lime, size=size.tiny)
+plotshape(tepeRed, "Üst reddedilme", shape.triangledown, location.abovebar, color.red, size=size.tiny)

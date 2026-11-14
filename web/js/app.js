@@ -186,7 +186,7 @@
       key: cur.key, candles, tfMs: r.cfg.ms,
       ema20: a.ema20, ema50: a.ema50, ema200: a.ema200, rsi: a.rsi, bbUp: a.bbUp, bbLo: a.bbLo,
       markers: r.sigs.map((s) => ({ i: s.i, side: s.side })), position: last, formation: cur.formation, formHistory: S.form.history ? cur.hist : [],
-      custom: customPlots(candles),
+      custom: rejPlots(candles).concat(customPlots(candles)),
     };
     chart.setData(cur.data);
     $('skel').style.display = 'none'; $('chartMsg').classList.remove('on');
@@ -704,7 +704,8 @@
     if (!ok && !D.tfsFor(sym).includes(tf)) { cur.htf[key] = false; return; }
     D.load(sym, tf, 60000).then((c) => { if (cur !== my) return; cur.htf[key] = c; applyCustom(); }).catch(() => { if (cur === my) { cur.htf[key] = false; applyCustom(); } }).finally(() => htfBusy.delete(key));
   }
-  function applyCustom() { if (!cur || !cur.data) return; let rj = []; try { if (S.layers.rej && isPro() && window.BeaconRegime) rj = window.BeaconRegime.plots(cur.candles); } catch (e) {} cur.data.custom = rj.concat(customPlots(cur.candles)); chart.setData(cur.data); }
+  function rejPlots(candles) { try { return S.layers.rej && isPro() && window.BeaconRegime ? window.BeaconRegime.plots(candles) : []; } catch (e) { return []; } }
+  function applyCustom() { if (!cur || !cur.data) return; cur.data.custom = rejPlots(cur.candles).concat(customPlots(cur.candles)); chart.setData(cur.data); }
   let fxEditing = null;
   function fxRender() {
     const pro = isPro(), list = S.custom || [];

@@ -33,6 +33,7 @@
     // ızgara
     const ticks = []; if (log) { for (let p = Math.pow(10, Math.floor(Math.log10(lo))); p <= hi * 1.01; p *= 10) for (const m of [1, 2, 5]) if (p * m >= lo && p * m <= hi) ticks.push(p * m); } else { const st = (hi - lo) / 4; for (let k = 0; k <= 4; k++) ticks.push(lo + st * k); }
     for (const v of ticks.slice(0, 7)) { const y = Math.round(Y(v)) + 0.5; c.strokeStyle = grid; c.beginPath(); c.moveTo(0, y); c.lineTo(pw, y); c.stroke(); c.fillStyle = fog; c.fillText(cfg.fmt ? cfg.fmt(v) : fmtUsd(v), W - 4, y); }
+    for (const z of cfg.zones || []) { if (z.x1 < x0 || z.x0 > x1) continue; const xa = Math.max(0, X(Math.max(z.x0, x0))), xb = Math.min(pw, X(Math.min(z.x1, x1))); c.fillStyle = z.color; c.fillRect(xa, 0, Math.max(1.5, xb - xa), ph); }
     // bantlar
     if (cfg.bands) {
       const B = cfg.bands, colors = cfg.bandColors, idx = []; for (let i = 0; i < cfg.bandX.length; i++) if (inR(cfg.bandX[i])) idx.push(i);
@@ -53,21 +54,23 @@
     }
     if (cfg.now) { const x = X(cfg.now.x), y = Y(cfg.now.y); c.fillStyle = css('--beam', '#ffc25c'); c.beginPath(); c.arc(x, y, 3.5, 0, 7); c.fill(); }
     let Y2 = null;
-    if (under) { // altta BTC fiyatı (log), aynı tarih ekseni
-      const u = cfg.under, t0 = ph + 8, t1 = phAll; let l2 = Infinity, h2 = -Infinity;
-      for (let i = 0; i < u.x.length; i++) if (inR(u.x[i]) && u.y[i] > 0) { const v = Math.log(u.y[i]); if (v < l2) l2 = v; if (v > h2) h2 = v; }
-      const sp2 = (h2 - l2) * 0.06 || 1; Y2 = (v) => t0 + 2 + (1 - (Math.log(Math.max(v, 1e-9)) - (l2 - sp2)) / (h2 - l2 + 2 * sp2)) * (t1 - t0 - 4);
+    if (under) { // altta ikinci panel (varsayılan: BTC fiyatı, log), aynı tarih ekseni
+      const u = cfg.under, t0 = ph + 8, t1 = phAll, lg = u.log !== false, tf = lg ? Math.log : (v) => v; let l2 = Infinity, h2 = -Infinity;
+      for (let i = 0; i < u.x.length; i++) if (inR(u.x[i]) && Number.isFinite(u.y[i]) && (!lg || u.y[i] > 0)) { const v = tf(u.y[i]); if (v < l2) l2 = v; if (v > h2) h2 = v; }
+      if (Number.isFinite(u.lo)) l2 = tf(u.lo); if (Number.isFinite(u.hi)) h2 = tf(u.hi);
+      const sp2 = (h2 - l2) * 0.06 || 1; Y2 = (v) => t0 + 2 + (1 - (tf(Math.max(v, lg ? 1e-9 : -1e18)) - (l2 - sp2)) / (h2 - l2 + 2 * sp2)) * (t1 - t0 - 4);
       c.strokeStyle = css('--rule', '#1a2438'); c.beginPath(); c.moveTo(0, t0 - 4.5); c.lineTo(W, t0 - 4.5); c.stroke();
-      c.beginPath(); let st = false; for (let i = 0; i < u.x.length; i++) { if (!inR(u.x[i]) || !(u.y[i] > 0)) { st = false; continue; } const x = X(u.x[i]), y = Y2(u.y[i]); st ? c.lineTo(x, y) : c.moveTo(x, y); st = true; }
-      c.strokeStyle = 'rgba(233,238,248,.85)'; c.lineWidth = 1.2; c.stroke();
-      c.fillStyle = fog; c.textAlign = 'right'; c.textBaseline = 'middle'; for (const v of [Math.exp(h2), Math.exp(l2)]) c.fillText(fmtUsd(v), W - 4, Y2(v));
-      c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText('BTC fiyatı', 4, t0 + 1);
+      for (const r of u.refs || []) { const y = Math.round(Y2(r.y)) + 0.5; c.strokeStyle = r.color; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(0, y); c.lineTo(pw, y); c.stroke(); c.setLineDash([]); }
+      c.beginPath(); let st = false; for (let i = 0; i < u.x.length; i++) { if (!inR(u.x[i]) || !Number.isFinite(u.y[i]) || (lg && !(u.y[i] > 0))) { st = false; continue; } const x = X(u.x[i]), y = Y2(u.y[i]); st ? c.lineTo(x, y) : c.moveTo(x, y); st = true; }
+      c.strokeStyle = u.color || 'rgba(233,238,248,.85)'; c.lineWidth = 1.2; c.stroke();
+      const uf = u.fmt || fmtUsd; c.fillStyle = fog; c.textAlign = 'right'; c.textBaseline = 'middle'; for (const v of [lg ? Math.exp(h2) : h2, lg ? Math.exp(l2) : l2]) c.fillText(uf(v), W - 4, Y2(v));
+      c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText(u.nm || 'BTC fiyatı', 4, t0 + 1);
     }
     if (hov != null && hov >= 0 && hov <= pw) { // imleç: o günün değerleri
       const xv = x0 + ((hov - 2) / (pw - 4)) * (x1 - x0), near = (xs) => { let lo2 = 0, hi2 = xs.length - 1; while (lo2 < hi2) { const m = (lo2 + hi2) >> 1; if (xs[m] < xv) lo2 = m + 1; else hi2 = m; } return lo2 > 0 && Math.abs(xs[lo2 - 1] - xv) < Math.abs(xs[lo2] - xv) ? lo2 - 1 : lo2; };
       const lines = []; let tx = null;
       for (const sr of cfg.series) { if (!sr.nm || sr.noTip) continue; const k = near(sr.x), v = sr.y[k]; if (!Number.isFinite(v)) continue; tx = tx == null ? sr.x[k] : tx; const xx = X(sr.x[k]), yy = Y(v); c.fillStyle = sr.color; c.beginPath(); c.arc(xx, yy, 3, 0, 7); c.fill(); lines.push([sr.nm, sr.f ? sr.f(v) : fmtUsd(v), sr.color]); }
-      if (cfg.under) { const k = near(cfg.under.x); if (tx == null) tx = cfg.under.x[k]; if (Y2) { c.fillStyle = '#fff'; c.beginPath(); c.arc(X(cfg.under.x[k]), Y2(cfg.under.y[k]), 3, 0, 7); c.fill(); } lines.push(['BTC', '$' + fmtUsd(cfg.under.y[k]), '#fff']); }
+      if (cfg.under) { const k = near(cfg.under.x); if (tx == null) tx = cfg.under.x[k]; if (Y2) { c.fillStyle = '#fff'; c.beginPath(); c.arc(X(cfg.under.x[k]), Y2(cfg.under.y[k]), 3, 0, 7); c.fill(); } lines.push([cfg.under.nm || 'BTC', cfg.under.tip ? cfg.under.tip(cfg.under.y[k]) : '$' + fmtUsd(cfg.under.y[k]), cfg.under.color || '#fff']); }
       if (tx != null) {
         const hx = Math.round(X(tx)) + 0.5; c.strokeStyle = 'rgba(233,238,248,.45)'; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(hx, 0); c.lineTo(hx, phAll); c.stroke(); c.setLineDash([]);
         const f2 = 10.5 * FS, lh = 14 * FS, title = ds(tx); c.font = `600 ${f2}px ${font}`; let bw = c.measureText(title).width; for (const [n, v] of lines) bw = Math.max(bw, c.measureText(n + ': ' + v).width); bw += 14;
@@ -139,6 +142,7 @@
     try {
       const cs = await D.loadLong('BTC', '1d', 5); R = M.compute(cs); if (!R) throw new Error('veri az');
       try { R.x = window.BeaconMarketX ? window.BeaconMarketX.compute(cs) : null; } catch (e) { R.x = null; }
+      if (R.x && window.BeaconMarketX.loadFundingSeries) window.BeaconMarketX.loadFundingSeries().then((fs) => { if (R && R.x && fs) { R.x.fund = fs; render(); if (fullId) drawFull(); } });
       if (R.x) window.BeaconMarketX.loadFunding().then((f) => { if (R && R.x) { R.x.funding = f; render(); if (fullId) drawFull(); } }); // funding gelirse yön eğilimi güncellenir
     }
     catch (e) { failed = true; }

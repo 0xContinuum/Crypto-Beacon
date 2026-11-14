@@ -151,3 +151,6 @@ Pine çevirici önce hafif v1'i dener; tam çeviremezse kodu `//@beacon2` başl�
 - **Beacon Rejim** (grafik katmanı, Pro): oynaklığa göre standartlaştırılmış getirilerde kayan Varyans Oranı. Yeşil/kırmızı: trend, mavi: geri dönüş, gri: belirsiz.
 - Ay Fazı Sınaması kaldırıldı. Yay Gerilimi kodda duruyor ama kapalı (`showBow:true` ile açılır).
 - Testler: `node tests/marketx.test.js`, `node tests/regime.test.js`, `node tests/view.test.js`.
+- **Funding Rates** (piyasa, Pro): Binance BTCUSDT vadeli funding geçmişi (2019-09'dan, sayfalı), 7 günlük ortalama, altta BTC fiyatı; aşırı funding sonrası getiriler betimleyici olarak gösterilir.
+- **Döngü Dip/Tepe Bölgeleri** (piyasa, Pro): fiyat tabanlı "döngü ısısı" (0-100); önceki döngülerin gerçek tepe/dipleri otomatik bulunup bölgelerle karşılaştırılır.
+- Örnek kullanıcı göstergesi: `tests/fixtures/beacon/Denge_Hatti.beacon.txt` (ƒx Göstergelerim'e yapıştırın).

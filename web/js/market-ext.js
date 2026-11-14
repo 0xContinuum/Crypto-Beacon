@@ -221,9 +221,88 @@
     return { yhat, dn90, dn95, up90, worst, st, now, pct, price: c[last], H, lvl: { dn90: lv(q.dn90), dn95: lv(q.dn95), up90: lv(q.up90) } };
   }
 
+  /* ——— Funding geçmişi: Binance vadeli genel API, sayfalı (8 saatlik değerler, yüzde) ——— */
+  const FUND_HOSTS = ['https://fapi.binance.com', 'https://fapi1.binance.com', 'https://fapi2.binance.com'];
+  async function loadFundingSeries(sinceMs) {
+    const t0 = sinceMs || Date.UTC(2019, 8, 10), STEP = 330 * 864e5, now = Date.now(), wins = []; for (let a = t0; a < now; a += STEP) wins.push(a);
+    const one = async (a) => {
+      for (const h of FUND_HOSTS) {
+        try { const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 9000), r = await fetch(`${h}/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1000&startTime=${a}&endTime=${a + STEP}`, { signal: ctl.signal }); clearTimeout(to); if (r.ok) return await r.json(); } catch (e) {}
+      } return null;
+    };
+    const parts = await Promise.all(wins.map(one)); if (parts.filter(Boolean).length < Math.ceil(wins.length * 0.6)) return null;
+    const m = new Map(); for (const p of parts) for (const x of p || []) { const v = parseFloat(x.fundingRate); if (Number.isFinite(v)) m.set(x.fundingTime, v * 100); }
+    const rows = [...m.entries()].sort((a, b) => a[0] - b[0]).map(([t, v]) => ({ t, v })); return rows.length > 300 ? rows : null;
+  }
+  /** 8 saatlik funding satırlarını gün mumlarına hizalar: günlük ortalama (8 saat başına %) ve 7 günlük ortalama. */
+  function fundDaily(rows, t) {
+    const day = (x) => Math.floor(x / 864e5), sum = new Map(), cnt = new Map();
+    for (const r of rows) { const d = day(r.t); sum.set(d, (sum.get(d) || 0) + r.v); cnt.set(d, (cnt.get(d) || 0) + 1); }
+    const f1 = t.map((x) => { const d = day(x); return cnt.get(d) ? sum.get(d) / cnt.get(d) : NaN; });
+    const f7 = f1.map((_, i) => { let s = 0, k = 0; for (let j = Math.max(0, i - 6); j <= i; j++) if (Number.isFinite(f1[j])) { s += f1[j]; k++; } return k >= 4 ? s / k : NaN; });
+    return { f1, f7 };
+  }
+  /** Betimleyici sınama: funding aşırı olduğunda sonraki H günün getirisi (yüzdelikler yalnızca geçmiş 365 günden → geleceğe bakmaz). */
+  function fundStats(f7, c, H) {
+    H = H || 14; const n = c.length, hi = [], lo = [], all = []; let lastHi = -99, lastLo = -99, epHi = 0, epLo = 0;
+    for (let i = 365; i + H < n; i++) {
+      if (!Number.isFinite(f7[i])) continue;
+      const win = []; for (let j = i - 365; j < i; j++) if (Number.isFinite(f7[j])) win.push(f7[j]); if (win.length < 200) continue; win.sort((a, b) => a - b);
+      const r = c[i + H] / c[i] - 1; all.push(r);
+      if (f7[i] >= win[Math.floor(0.9 * win.length)]) { hi.push(r); if (i - lastHi > H) epHi++; lastHi = i; }
+      if (f7[i] <= win[Math.floor(0.1 * win.length)]) { lo.push(r); if (i - lastLo > H) epLo++; lastLo = i; }
+    }
+    const med = (a) => { if (!a.length) return NaN; const b = a.slice().sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; }, pos = (a) => (a.length ? a.filter((x) => x > 0).length / a.length : NaN);
+    return { H, nAll: all.length, meanAll: mean(all) * 100, medAll: med(all) * 100, posAll: pos(all), hi: { n: hi.length, ep: epHi, mean: mean(hi) * 100, med: med(hi) * 100, pos: pos(hi) }, lo: { n: lo.length, ep: epLo, mean: mean(lo) * 100, med: med(lo) * 100, pos: pos(lo) } };
+  }
+
+  /* ——— Döngü Isısı: önceki döngüde dip/tepe bölgelerini gösterir ———
+     Yalnızca fiyat verisi: (1) fiyat/200G ortalama, (2) fiyat/365G ortalama, (3) son 4 yılın zirvesinden uzaklık.
+     Her ölçü, son 4 yıllık (en çok 1461 gün) penceresindeki yüzdeliğe çevrilir (yalnızca geçmiş veriyle; geleceğe bakmaz) ve ortalaması alınır: 0-100.
+     ≥90: tepe bölgesi, ≤10: dip bölgesi. Gösterge, yarılanma döngülerindeki gerçek tepe/dipleri otomatik bulup bölgelerle karşılaştırır. */
+  const HALVINGS = [Date.UTC(2012, 10, 28), Date.UTC(2016, 6, 9), Date.UTC(2020, 4, 11), Date.UTC(2024, 3, 20)];
+  function zoneGauge(cs, opt) {
+    const TOP = (opt && opt.top) || 90, BOT = (opt && opt.bot) || 10, WIN = 1461, MINOBS = 250, n = cs.length, c = cs.map((k) => k.c);
+    const sma = (k) => { const o = new Array(n).fill(NaN); let s = 0; for (let i = 0; i < n; i++) { s += c[i]; if (i >= k) s -= c[i - k]; if (i >= k - 1) o[i] = s / k; } return o; };
+    const m200 = sma(200), m365 = sma(365);
+    const dd = new Array(n).fill(NaN); for (let i = 199; i < n; i++) { let mx = 0; for (let j = Math.max(0, i - WIN + 1); j <= i; j++) if (cs[j].h > mx) mx = cs[j].h; dd[i] = Math.log(c[i] / mx); }
+    const mets = [c.map((x, i) => (Number.isFinite(m200[i]) ? Math.log(x / m200[i]) : NaN)), c.map((x, i) => (Number.isFinite(m365[i]) ? Math.log(x / m365[i]) : NaN)), dd];
+    const heat = new Array(n).fill(NaN);
+    for (let i = 0; i < n; i++) {
+      let tot = 0, k = 0;
+      for (const m of mets) { if (!Number.isFinite(m[i])) continue; let below = 0, obs = 0; for (let j = Math.max(0, i - WIN + 1); j <= i; j++) if (Number.isFinite(m[j])) { obs++; if (m[j] <= m[i]) below++; } if (obs >= MINOBS) { tot += (below / obs) * 100; k++; } }
+      if (k) heat[i] = tot / k;
+    }
+    // bölgeler (ardışık günler birleştirilir)
+    const zones = (pred) => { const z = []; let a = -1; for (let i = 0; i <= n; i++) { const on = i < n && Number.isFinite(heat[i]) && pred(heat[i]); if (on && a < 0) a = i; if (!on && a >= 0) { z.push([a, i - 1]); a = -1; } } return z; };
+    const topZ = zones((h) => h >= TOP), botZ = zones((h) => h <= BOT);
+    // gerçek tepe/dipler: tamamlanmış yarılanma döngüleri
+    const cycles = []; const dayOf = (t) => t;
+    for (let k = 1; k + 1 < HALVINGS.length; k++) {
+      const a = HALVINGS[k], b = HALVINGS[k + 1]; if (cs[0].t > a - 200 * 864e5 && k === 1) { /* 2016 döngüsü veri dışı */ }
+      let ti = -1, hh = 0; for (let i = 0; i < n; i++) if (cs[i].t >= a && cs[i].t < b && cs[i].h > hh) { hh = cs[i].h; ti = i; }
+      if (ti < 0 || cs[0].t > a) continue; // döngü başı veride yoksa atla
+      let bi = -1, ll = Infinity; for (let i = ti; i < n && cs[i].t <= cs[ti].t + 540 * 864e5; i++) if (cs[i].l < ll) { ll = cs[i].l; bi = i; }
+      if (bi < 0) continue;
+      const near = (zs, i, before, after) => { for (const [x, y] of zs) if (y >= i - before && x <= i + after) return { hit: true, lead: i - Math.max(x, i - before) }; return { hit: false, lead: NaN }; };
+      cycles.push({ top: ti, bot: bi, topP: cs[ti].h, botP: cs[bi].l, topHeat: heat[ti], botHeat: heat[bi], topHit: near(topZ, ti, 90, 20), botHit: near(botZ, bi, 90, 20) });
+    }
+    // başka bir bakış: son halving öncesi tamamlanmış döngü yoksa 2017 tepe/dip için de dene (veri 2017-08'de başlar)
+    if (cs[0].t > HALVINGS[1] && cs[0].t < HALVINGS[2]) {
+      const a = cs[0].t, b = HALVINGS[2]; let ti = -1, hh = 0; for (let i = 0; i < n; i++) if (cs[i].t >= a && cs[i].t < b && cs[i].h > hh) { hh = cs[i].h; ti = i; }
+      if (ti > 0) { let bi = -1, ll = Infinity; for (let i = ti; i < n && cs[i].t <= cs[ti].t + 540 * 864e5; i++) if (cs[i].l < ll) { ll = cs[i].l; bi = i; }
+        const near = (zs, i, before, after) => { for (const [x, y] of zs) if (y >= i - before && x <= i + after) return { hit: true, lead: i - Math.max(x, i - before) }; return { hit: false, lead: NaN }; };
+        if (bi > 0 && Number.isFinite(heat[bi])) cycles.unshift({ top: ti, bot: bi, topP: cs[ti].h, botP: cs[bi].l, topHeat: heat[ti], botHeat: heat[bi], topHit: Number.isFinite(heat[ti]) ? near(topZ, ti, 90, 20) : { hit: false, lead: NaN, na: true }, botHit: near(botZ, bi, 90, 20) }); }
+    }
+    // kesinlik: bölge günlerinin kaçı gerçek uca ±90 gün yakın
+    const ext = (key) => cycles.map((cy) => cy[key]), within = (zs, pts) => { let tot = 0, ok = 0; for (const [x, y] of zs) for (let i = x; i <= y; i++) { tot++; if (pts.some((p) => Math.abs(i - p) <= 90)) ok++; } return tot ? ok / tot : NaN; };
+    const covered = heat.filter(Number.isFinite).length, last = n - 1;
+    return { heat, topZ, botZ, cycles, TOP, BOT, now: heat[last], precTop: within(topZ, ext('top')), precBot: within(botZ, ext('bot')), share: { top: topZ.reduce((s2, [a, b]) => s2 + b - a + 1, 0) / Math.max(1, covered), bot: botZ.reduce((s2, [a, b]) => s2 + b - a + 1, 0) / Math.max(1, covered) }, price: c[last], nowZone: Number.isFinite(heat[last]) ? (heat[last] >= TOP ? 'top' : heat[last] <= BOT ? 'bot' : 'mid') : null };
+  }
+
   function compute(cs) {
     if (!cs || cs.length < 400) return null;
-    return { t: cs.map((k) => k.t), bow: bowTension(cs), storm: stormGauge(cs), drop: dropGauge(cs), funding: null };
+    return { t: cs.map((k) => k.t), bow: bowTension(cs), storm: stormGauge(cs), drop: dropGauge(cs), zone: zoneGauge(cs), funding: null, fund: null };
   }
 
   /* ——— ücretsiz funding verisi (Binance vadeli genel API; erişilemezse null) ——— */
@@ -270,6 +349,39 @@
         legend: [['Tahmin edilen taban (%90)', bear], ['Gerçekleşen en kötü düşüş', 'rgba(233,238,248,.5)'], ['BTC fiyatı (altta)', '#fff']] });
     }
 
+    // 1b) Funding Rates + BTC
+    if (X.fund && X.fund.length) {
+      const fd = fundDaily(X.fund, t), f7 = fd.f7, last = (() => { for (let k = N - 1; k >= 0; k--) if (Number.isFinite(f7[k])) return k; return -1; })();
+      if (last >= 0) {
+        const cur = f7[last], ann = cur * 3 * 365, hist = f7.filter(Number.isFinite).sort((a, b) => a - b), pc = (hist.filter((x) => x <= cur).length / hist.length) * 100, fs = fundStats(f7, ctx.c, 14);
+        const badge = pc >= 90 ? 'Uzunlar kalabalık' : pc <= 10 ? 'Kısalar kalabalık' : cur < 0 ? 'Negatif' : 'Dengeli', tn = pc >= 90 ? 'down' : pc <= 10 ? 'up' : 'flat';
+        const fm = (v) => (v >= 0 ? '+' : '') + fmt2(v) + '%', blk = (nm, o) => (o.n ? `${nm}: ${o.n} gün (yaklaşık ${o.ep} ayrı dönem), ${fs.H} gün sonra ortalama ${fm(o.mean)}, ortanca ${fm(o.med)}, pozitif kapanış %${Math.round(o.pos * 100)}` : `${nm}: yeterli gün yok`);
+        out.push({
+          id: 'fund', title: 'Funding Rates', value: fm(ann).replace('%', '') + '%', unit: 'yıllık · 7 gün ort. 8 saatte ' + fmt2(cur * 1) + '%', badge, tone: tn,
+          info: `Funding, vadeli (perpetual) piyasada uzun ve kısa pozisyon sahiplerinin 8 saatte bir birbirine ödediği orandır. Pozitifse uzunlar kısalara öder: piyasa yukarı yönde kalabalıktır; negatifse tersi. Beklenen taban değer 8 saatte %0,01'dir (yıllık yaklaşık %11). Şu an 7 günlük ortalama ${fmt2(cur)}% (8 saatte), kendi tarihinin %${Math.round(pc)}'lik diliminde. Grafikte funding'in günlük değeri (soluk) ve 7 günlük ortalaması (kalın) altta BTC fiyatıyla birlikte görünür. Betimleyici sınama (yüzdelikler yalnızca önceki 365 günden alındı, geleceğe bakılmadı): tüm günlerde ${fs.H} gün sonra ortalama ${fm(fs.meanAll)} (pozitif kapanış %${Math.round(fs.posAll * 100)}). ${blk('Funding çok yüksekken (üst %10)', fs.hi)}. ${blk('Funding çok düşükken (alt %10)', fs.lo)}. Ardışık günler bağımsız değildir; gerçek örnek sayısı gün sayısından çok daha azdır, bu yüzden bu sayılar tek başına işlem gerekçesi değil, kalabalıklaşmanın tarihçesidir. Funding aşırıyken yön tersine dönebileceği gibi, güçlü trendlerde aylarca aşırı kalabilir. Veri: Binance BTCUSDT vadeli.`,
+          cfg: { xMin, fmt: (v) => fmt2(v) + '%', under: { x: t, y: ctx.c },
+            series: [{ nm: 'Funding (günlük, 8 saatte)', f: (v) => fmt2(v) + '%', x: t, y: fd.f1, color: 'rgba(233,238,248,.3)', w: 1 }, { nm: 'Funding (7 gün ort.)', f: (v) => fmt2(v) + '%', x: t, y: f7, color: beam, w: 1.8 }],
+            refs: [{ y: 0, color: 'rgba(233,238,248,.45)', label: '0' }, { y: 0.01, color: 'rgba(233,238,248,.25)', label: 'taban' }], now: { x: t[last], y: cur } },
+          legend: [['Funding 7 gün ort.', beam], ['Funding günlük', 'rgba(233,238,248,.5)'], ['BTC fiyatı (altta)', '#fff']] });
+      }
+    }
+    // 1c) Döngü Dip/Tepe Bölgeleri
+    const zg = X.zone;
+    if (zg && Number.isFinite(zg.now)) {
+      const dstr2 = (i) => new Date(t[i]).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' }), P = (x) => '$' + Math.round(x).toLocaleString('tr-TR');
+      const badge = zg.nowZone === 'top' ? 'Tepe bölgesi' : zg.nowZone === 'bot' ? 'Dip bölgesi' : 'Orta bölge', tn = zg.nowZone === 'top' ? 'down' : zg.nowZone === 'bot' ? 'up' : 'flat';
+      const lines = zg.cycles.map((cy) => { const tp = cy.topHit.na ? `${dstr2(cy.top)} tepesi (${P(cy.topP)}): ölçü için geçmiş veri yetmedi` : `${dstr2(cy.top)} tepesi (${P(cy.topP)}): ısı ${Math.round(cy.topHeat)}, ${cy.topHit.hit ? 'tepe bölgesi tepeden ' + Math.max(0, cy.topHit.lead) + ' gün önce başlayıp tepeyi kapsadı' : 'tepe bölgesi işaretlemedi'}`, bt = `${dstr2(cy.bot)} dibi (${P(cy.botP)}): ısı ${Math.round(cy.botHeat)}, ${cy.botHit.hit ? 'dip bölgesi dipten ' + Math.max(0, cy.botHit.lead) + ' gün önce başlayıp dibi kapsadı' : 'dip bölgesi işaretlemedi'}`; return tp + '; ' + bt; }).join(' | ');
+      const pr = (v) => (Number.isFinite(v) ? '%' + Math.round(v * 100) : '–');
+      out.push({
+        id: 'zone', title: 'Döngü Dip/Tepe Bölgeleri', value: Math.round(zg.now) + '/100', unit: 'döngü ısısı', badge, tone: tn,
+        info: `Fiyatın son 4 yıllık döngüsünde nerede durduğunu 0-100 ile ölçer: 100 tepeye, 0 dibe yakın demektir. Üç fiyat ölçüsünün (200 gün ve 365 gün ortalamalarına göre uzaklık, son 4 yılın zirvesinden uzaklık) kendi son 4 yıllık geçmişindeki yüzdeliklerinin ortalamasıdır; her gün yalnızca o güne kadarki veri kullanıldığı için grafik, göstergenin o gün gerçekte ne göstereceğidir (geriye dönük süslenmedi). ${zg.TOP} üstü kırmızı tepe bölgesi, ${zg.BOT} altı yeşil dip bölgesi olarak boyanır; kesikli çizgiler yarılanma döngülerinde otomatik bulunan gerçek tepe ve diplerdir. Önceki döngüler: ${lines || 'veride tamamlanmış döngü bulunamadı'}. Bölge günlerinin gerçek uca ±90 gün yakın olanı: tepe ${pr(zg.precTop)}, dip ${pr(zg.precBot)} (günlerin yaklaşık %${Math.round(zg.share.top * 100)}'i tepe, %${Math.round(zg.share.bot * 100)}'i dip bölgesinde). Bölgeler uç noktayı tam gün olarak değil bölge olarak yakalar ve erken başlayabilir; her döngü farklı olduğundan, yalnızca iki tamamlanmış döngü vardır. Şu an ısı ${Math.round(zg.now)}. Bu bir yön tahmini değil, döngü içindeki konum ölçüsüdür.`,
+        cfg: { xMin, log: true, fmt: (v) => P(v).replace('$', ''), series: [{ nm: 'BTC', f: (v) => P(v), x: t, y: ctx.c, color: 'rgba(233,238,248,.9)', w: 1.3 }],
+          zones: zg.topZ.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(255,99,132,.22)' })).concat(zg.botZ.map(([a, b]) => ({ x0: t[a], x1: t[b], color: 'rgba(53,214,160,.22)' }))),
+          marks: zg.cycles.map((cy) => ({ x: t[cy.top], color: bear })).concat(zg.cycles.map((cy) => ({ x: t[cy.bot], color: bull }))),
+          under: { x: t, y: zg.heat, log: false, lo: 0, hi: 100, nm: 'Döngü ısısı', tip: (v) => Math.round(v) + '/100', fmt: (v) => Math.round(v), color: beam, refs: [{ y: zg.TOP, color: bear }, { y: zg.BOT, color: bull }] }, now: { x: t[N - 1], y: ctx.c[N - 1] } },
+        legend: [['Tepe bölgesi', 'rgba(255,99,132,.7)'], ['Dip bölgesi', 'rgba(53,214,160,.7)'], ['Gerçek tepe/dip (kesikli)', 'rgba(233,238,248,.5)'], ['Döngü ısısı (altta)', beam]] });
+    }
+
     // 2) Yay Gerilimi (varsayılan kapalı: sentetik sınamada iddiası tutmadı; ctx.showBow ile açılır)
     if (!ctx.showBow) return out;
     const i = N - 1, now = bw.tension[i], s = bw.stats, f = X.funding;
@@ -288,5 +400,5 @@
     return out;
   }
 
-  return { compute, cards, loadFunding, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
+  return { compute, cards, loadFunding, loadFundingSeries, fundDaily, fundStats, zoneGauge, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
 });
