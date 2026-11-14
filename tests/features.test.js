@@ -39,8 +39,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     ok(!(await pg.evaluate(() => window.__beacon.isPro())), 'Pro olmayan hesapla devam');
     // Piyasa (Pro değil)
     await pg.click('#dock [data-v="market"]'); await pg.waitForSelector('.mk', { timeout: 8000 }); await sleep(600);
-    ok(await pg.locator('.mk').count() === 6, 'Piyasa 6 gösterge kartı gösterir');
-    ok(await pg.locator('.mk.locked').count() === 4, 'Pro değilken 4 kart kilitli, 2 kart açık (Pi Cycle, Mayer)');
+    ok(await pg.locator('.mk').count() === 8, 'Piyasa 8 gösterge kartı gösterir (Fırtına + Ay dahil)');
+    ok(await pg.locator('.mk.locked').count() === 6, 'Pro değilken 6 kart kilitli, 2 kart açık (Pi Cycle, Mayer)');
     ok(!(await pg.textContent('.mk[data-id="pi"] .mkv')).includes('•'), 'açık kartın değeri görünür');
     const drawn = (id) => pg.evaluate((id) => { const cv = document.querySelector(`.mk[data-id="${id}"] canvas`); const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let k = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) k++; return k; }, id);
     ok(await drawn('pi') > 3000 && await drawn('mayer') > 1500, 'açık kartların grafiği çizilmiş');

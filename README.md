@@ -144,3 +144,9 @@ Pine çevirici önce hafif v1'i dener; tam çeviremezse kodu `//@beacon2` başl�
 
 ## Çizim ve ölçüm araçları
 `web/js/draw.js`: trend, ışın, yatay/dikey çizgi, paralel kanal, Fibonacci, dikdörtgen, not, cetvel (geçici), risk/ödül pozisyonu. Zaman+fiyat ile saklanır (TF değişince yerinde kalır), mıknatıs, kilit, gizle, geri al, kopyala. Ücretsiz: trend, yatay çizgi, cetvel (en çok 8 çizim); diğerleri Pro.
+
+## Piyasa göstergeleri: Fırtına Barometresi (yeni) ve sınama notları
+- **Fırtına Barometresi** (Pro): önümüzdeki 7 günde BTC hareketinin büyüklüğünü (yön değil) HAR tipi regresyonla tahmin eder; her gün yalnızca o güne kadarki veriyle yeniden uydurulur. Kartta canlı örneklem-dışı kapsama ve hata istatistikleri gösterilir.
+- **Ay Fazı Sınaması** (Pro): karıştırma testiyle ay döngüsünün etkisini sınar; dürüst "etki yok" sonucu verir.
+- **Yay Gerilimi**: kodda duruyor ama kapalı (`cards(X, {showBow:true})` ile açılır). Sentetik sınamada iddiası tutmadı.
+- Sınama: `node tools/validate_market.js --synthetic` (ağsız) veya `node tools/validate_market.js` (Binance günlük BTCUSDT ile gerçek veri). Birim testi: `node tests/marketx.test.js`.

@@ -260,6 +260,14 @@
       cci: (a, st, i) => { const p = per(a[1], 'cci'); rec(st.a, i, a[0]); if (!winOK(st.a, i, p)) return NaN; let s = 0; for (let j = i - p + 1; j <= i; j++) s += st.a[j]; const m = s / p; let d = 0; for (let j = i - p + 1; j <= i; j++) d += Math.abs(st.a[j] - m); d /= p; return d ? (st.a[i] - m) / (0.015 * d) : 0; },
       mfi: (a, st, i) => { const p = a.length > 1 ? per(a[1], 'mfi') : 14; rec(st.a, i, a[0]); if (i < p || !winOK(st.a, i, p + 1)) return NaN; let pos = 0, neg = 0; for (let j = i - p + 1; j <= i; j++) { const mf = st.a[j] * S.volume[j]; if (st.a[j] > st.a[j - 1]) pos += mf; else if (st.a[j] < st.a[j - 1]) neg += mf; } return neg === 0 ? (pos === 0 ? 50 : 100) : 100 - 100 / (1 + pos / neg); },
       stoch: (a, st, i) => { const p = per(a[3], 'stoch'); rec(st.a, i, a[0]); rec(st.b, i, a[1]); (st.c = st.c || []); rec(st.c, i, a[2]); if (i < p - 1) return NaN; let hh = -Infinity, ll = Infinity; for (let j = i - p + 1; j <= i; j++) { if (st.b[j] > hh) hh = st.b[j]; if (st.c[j] < ll) ll = st.c[j]; } return hh > ll ? (100 * (a[0] - ll)) / (hh - ll) : NaN; },
+      percentrank: (a, st, i) => { const p = per(a[1], 'percentrank'); rec(st.a, i, a[0]); if (i < p || !fin(a[0])) return NaN; let le = 0; for (let j = i - p; j < i; j++) { if (!fin(st.a[j])) return NaN; if (st.a[j] <= a[0]) le++; } return (100 * le) / p; },
+      percentile_nearest_rank: (a, st, i) => { const p = per(a[1], 'percentile'), q = a[2]; rec(st.a, i, a[0]); if (!winOK(st.a, i, p)) return NaN; const w = st.a.slice(i - p + 1, i + 1).sort((x, y) => x - y); return w[Math.max(0, Math.min(p - 1, Math.ceil((q / 100) * p) - 1))]; },
+      variance: (a, st, i) => { const p = per(a[1], 'variance'); rec(st.a, i, a[0]); if (!winOK(st.a, i, p)) return NaN; let s = 0; for (let j = i - p + 1; j <= i; j++) s += st.a[j]; const m = s / p; let v = 0; for (let j = i - p + 1; j <= i; j++) v += (st.a[j] - m) ** 2; return v / p; },
+      dev: (a, st, i) => { const p = per(a[1], 'dev'); rec(st.a, i, a[0]); if (!winOK(st.a, i, p)) return NaN; let s = 0; for (let j = i - p + 1; j <= i; j++) s += st.a[j]; const m = s / p; let d = 0; for (let j = i - p + 1; j <= i; j++) d += Math.abs(st.a[j] - m); return d / p; },
+      median: (a, st, i) => { const p = per(a[1], 'median'); rec(st.a, i, a[0]); if (!winOK(st.a, i, p)) return NaN; const w = st.a.slice(i - p + 1, i + 1).sort((x, y) => x - y), m = p >> 1; return p % 2 ? w[m] : (w[m - 1] + w[m]) / 2; },
+      correlation: (a, st, i) => { const p = per(a[2], 'correlation'); rec(st.a, i, a[0]); rec(st.b, i, a[1]); if (!winOK(st.a, i, p) || !winOK(st.b, i, p)) return NaN; let sx = 0, sy = 0; for (let j = i - p + 1; j <= i; j++) { sx += st.a[j]; sy += st.b[j]; } const mx = sx / p, my = sy / p; let c = 0, vx = 0, vy = 0; for (let j = i - p + 1; j <= i; j++) { c += (st.a[j] - mx) * (st.b[j] - my); vx += (st.a[j] - mx) ** 2; vy += (st.b[j] - my) ** 2; } return vx && vy ? c / Math.sqrt(vx * vy) : NaN; },
+      cmo: (a, st, i) => { const p = per(a[1], 'cmo'); rec(st.a, i, a[0]); if (i < p || !winOK(st.a, i, p + 1)) return NaN; let u = 0, d = 0; for (let j = i - p + 1; j <= i; j++) { const x = st.a[j] - st.a[j - 1]; if (x > 0) u += x; else d -= x; } return u + d ? (100 * (u - d)) / (u + d) : 0; },
+      wpr: (a, st, i) => { const p = per(a[0], 'wpr'); rec(st.a, i, S.high[bi]); rec(st.b, i, S.low[bi]); if (i < p - 1) return NaN; let hh = -Infinity, ll = Infinity; for (let j = i - p + 1; j <= i; j++) { if (st.a[j] > hh) hh = st.a[j]; if (st.b[j] < ll) ll = st.b[j]; } return hh > ll ? (100 * (S.close[bi] - hh)) / (hh - ll) : NaN; },
       change: (a, st, i) => { const k = a.length > 1 ? per(a[1], 'change') : 1; rec(st.a, i, a[0]); return i - k >= 0 ? a[0] - st.a[i - k] : NaN; },
       mom: (a, st, i) => { const k = per(a[1], 'mom'); rec(st.a, i, a[0]); return i - k >= 0 ? a[0] - st.a[i - k] : NaN; },
       roc: (a, st, i) => { const k = per(a[1], 'roc'); rec(st.a, i, a[0]); return i - k >= 0 ? (100 * (a[0] - st.a[i - k])) / st.a[i - k] : NaN; },
@@ -290,7 +298,7 @@
       const L = per(a[1], 'pivot'), R = per(a[2], 'pivot'); rec(st.a, i, a[0]); const c = i - R; if (c - L < 0) return NaN;
       const v = st.a[c]; if (!fin(v)) return NaN; for (let j = c - L; j <= c + R; j++) { if (j === c) continue; if (!fin(st.a[j])) return NaN; if (hi ? st.a[j] > v : st.a[j] < v) return NaN; } return v;
     }
-    const TA_ALIAS = { 'ta.sma': 'sma', 'ta.ema': 'ema', 'ta.rma': 'rma', 'ta.atr': 'atr', 'ta.rsi': 'rsi', 'ta.highest': 'highest', 'ta.lowest': 'lowest', 'ta.stdev': 'stdev', 'math.sum': 'sum', 'ta.wma': 'wma', 'ta.hma': 'hma', 'ta.vwma': 'vwma', 'ta.alma': 'alma', 'ta.linreg': 'linreg', 'ta.cci': 'cci', 'ta.mfi': 'mfi', 'ta.stoch': 'stoch', 'ta.change': 'change', 'ta.mom': 'mom', 'ta.roc': 'roc', 'ta.rising': 'rising', 'ta.falling': 'falling', 'ta.cum': 'cum', 'ta.crossover': 'crossover', 'ta.crossunder': 'crossunder', 'ta.cross': 'cross', 'ta.barssince': 'barssince', 'ta.valuewhen': 'valuewhen', 'ta.highestbars': 'highestbars', 'ta.lowestbars': 'lowestbars', 'ta.pivothigh': 'pivothigh', 'ta.pivotlow': 'pivotlow', 'ta.fixnan': 'fixnan', 'ta.macd': 'macd', 'ta.bb': 'bb', 'ta.supertrend': 'supertrend', 'ta.sum': 'sum' };
+    const TA_ALIAS = { 'ta.sma': 'sma', 'ta.ema': 'ema', 'ta.rma': 'rma', 'ta.atr': 'atr', 'ta.rsi': 'rsi', 'ta.highest': 'highest', 'ta.lowest': 'lowest', 'ta.stdev': 'stdev', 'math.sum': 'sum', 'ta.wma': 'wma', 'ta.hma': 'hma', 'ta.vwma': 'vwma', 'ta.alma': 'alma', 'ta.linreg': 'linreg', 'ta.cci': 'cci', 'ta.mfi': 'mfi', 'ta.stoch': 'stoch', 'ta.change': 'change', 'ta.mom': 'mom', 'ta.roc': 'roc', 'ta.rising': 'rising', 'ta.falling': 'falling', 'ta.cum': 'cum', 'ta.crossover': 'crossover', 'ta.crossunder': 'crossunder', 'ta.cross': 'cross', 'ta.barssince': 'barssince', 'ta.valuewhen': 'valuewhen', 'ta.highestbars': 'highestbars', 'ta.lowestbars': 'lowestbars', 'ta.pivothigh': 'pivothigh', 'ta.pivotlow': 'pivotlow', 'ta.fixnan': 'fixnan', 'ta.macd': 'macd', 'ta.bb': 'bb', 'ta.supertrend': 'supertrend', 'ta.percentrank': 'percentrank', 'ta.percentile_nearest_rank': 'percentile_nearest_rank', 'ta.variance': 'variance', 'ta.dev': 'dev', 'ta.median': 'median', 'ta.correlation': 'correlation', 'ta.cmo': 'cmo', 'ta.wpr': 'wpr', 'ta.sum': 'sum' };
     ['sma', 'ema', 'rma', 'atr', 'rsi', 'highest', 'lowest', 'stdev', 'wma', 'hma', 'vwma', 'alma', 'cci', 'mfi', 'stoch', 'change', 'mom', 'roc', 'crossover', 'crossunder', 'cross', 'barssince', 'valuewhen', 'pivothigh', 'pivotlow', 'fixnan', 'macd', 'supertrend', 'linreg', 'cum', 'rising', 'falling', 'highestbars', 'lowestbars'].forEach((k) => { if (!TA_ALIAS[k]) TA_ALIAS[k] = k; });
 
     /* ——— sabitler ve yerleşik değişkenler ——— */
@@ -384,24 +392,30 @@
 
     /* ——— security ——— */
     const secCache = new Map();
+    const symId = (sym) => { const t = String(sym || '').replace(/^[A-Za-z0-9_]+:/, '').toUpperCase(), perp = /(\.P|PERP)$/.test(t); const base = t.replace(/(\.P|PERP)$/, '').replace(/USDT$/, ''); return /^[A-Z0-9]{2,12}$/.test(base) ? base + (perp ? '.P' : '') : null; };
     function security(e, F) {
       if (cap && cap.nosec) return NaN;
       const [symE, tfE, exE] = [e.args[0], e.args[1], e.args[2]];
       if (!symE || !tfE || !exE) err('request.security(sembol, zaman_dilimi, ifade) üç argüman ister');
       const sym = str(ev(symE.e, F)), tfS = str(ev(tfE.e, F));
-      if (sym && sym !== (opts.symbol || 'BTCUSDT') && !/^(BINANCE:)?[A-Z0-9]+USDT(\.P)?$/.test(sym)) err('Başka sembolün verisi desteklenmiyor (' + sym + ')');
-      if (sym && sym.replace(/^BINANCE:/, '').replace(/\.P$/, '') !== (opts.symbol || 'BTCUSDT')) err('Başka sembolün verisi desteklenmiyor (' + sym + ')');
+      const mine = symId(opts.symbol || 'BTCUSDT'), want = sym ? symId(sym) : mine;
+      if (!want) err('Sembol tanınmadı: ' + sym);
       const bt = tfS === '' ? chartTf : binTf(tfS); if (!bt) err('Zaman dilimi tanınmadı: ' + tfS);
-      if (bt === chartTf) return ev(exE.e, F);
+      if (bt === chartTf && want === mine) return ev(exE.e, F);
       if (TF_MS[bt] < chartMs) { (out.warnings = out.warnings || new Set()).add('Daha küçük zaman dilimi (' + tfS + ') desteklenmiyor; bu değer boş bırakıldı'); return NaN; }
-      let c = secCache.get(e.id + '|' + bt);
+      const key = e.id + '|' + want + '|' + bt;
+      let c = secCache.get(key);
       if (!c) {
-        const hc = opts.getCandles ? opts.getCandles(bt) : null;
-        if (!hc || !hc.length) err('Zaman dilimi verisi yüklenmedi: ' + bt, { needTf: bt });
-        const caps = execute(code, hc, Object.assign({}, opts, { tf: bt }), { node: exE.e, nosec: true }).captured;
-        c = { hc, caps }; secCache.set(e.id + '|' + bt, c);
+        const hc = opts.getCandles ? opts.getCandles(bt, want) : null;
+        if (hc === false) { (out.warnings = out.warnings || new Set()).add(sym + ' verisi bulunamadı; bu değer boş bırakıldı'); c = { hc: [], caps: [] }; secCache.set(key, c); }
+        else {
+          if (!hc || !hc.length) err('Veri yüklenmedi: ' + want + ' ' + bt, { needTf: bt, needSym: want });
+          const caps = execute(code, hc, Object.assign({}, opts, { tf: bt, symbol: want + (want.endsWith('.P') ? '' : 'USDT') }), { node: exE.e, nosec: true }).captured;
+          c = { hc, caps }; secCache.set(key, c);
+        }
       }
-      // son tamamlanmış üst zaman dilimi mumu (geleceğe bakmaz)
+      if (!c.hc.length) return NaN;
+      // son tamamlanmış mum (geleceğe bakmaz)
       const msH = TF_MS[bt], t = S.time[bi]; let lo = 0, hi = c.hc.length - 1, h = -1;
       while (lo <= hi) { const m = (lo + hi) >> 1; if (c.hc[m].t <= t) { h = m; lo = m + 1; } else hi = m - 1; }
       if (h < 0) return NaN;
@@ -419,7 +433,7 @@
       'math.min_': null,
     };
     ['abs', 'max', 'min', 'sqrt', 'log', 'exp', 'pow', 'floor', 'ceil', 'round', 'sign', 'avg'].forEach((k) => { MATH[k] = MATH['math.' + k]; });
-    const fmtBy = (v, f) => { if (!f || typeof f !== 'string') return fmtNum(v); const m = /\.(#+|0+)/.exec(f); const d = m ? m[1].length : 0; const s = v.toFixed(d); return m && m[1][0] === '#' ? String(parseFloat(s)) : s; };
+    const fmtBy = (v, f) => { if (!f || typeof f !== 'string' || f === 'mintick') return fmtNum(v); const m = /\.(#+|0+)/.exec(f); const d = m ? m[1].length : 0; const s = v.toFixed(d); return m && m[1][0] === '#' ? String(parseFloat(s)) : s; };
     const STR = {
       'str.tostring': (a) => (typeof a[0] === 'string' ? a[0] : isNa(a[0]) ? 'NaN' : typeof a[0] === 'boolean' ? String(a[0]) : fmtBy(num(a[0]), a[1])), 'str.tonumber': (a) => { const v = parseFloat(a[0]); return fin(v) ? v : NaN; },
       'str.length': (a) => str(a[0]).length, 'str.contains': (a) => str(a[0]).includes(str(a[1])), 'str.upper': (a) => str(a[0]).toUpperCase(), 'str.lower': (a) => str(a[0]).toLowerCase(), 'str.startswith': (a) => str(a[0]).startsWith(str(a[1])), 'str.endswith': (a) => str(a[0]).endsWith(str(a[1])),
@@ -611,7 +625,7 @@
             if (s.op !== ':=') v = bin(s.op[0], cur, v);
             if (F.st.pv.has(s.n)) F.st.pv.set(s.n, v); else F.vars.set(s.n, v); val = v; break;
           }
-          case 'tuple': { const v = ev(s.e, F); if (!Array.isArray(v)) err('Çoklu atama için birden çok değer döndüren bir işlev gerekir'); s.names.forEach((nm2, k) => { if (nm2 !== '_') F.vars.set(nm2, v[k] === undefined ? NaN : v[k]); }); break; }
+          case 'tuple': { let v = ev(s.e, F); if (!Array.isArray(v)) { if (isNa(v)) v = []; else err('Çoklu atama için birden çok değer döndüren bir işlev gerekir'); } s.names.forEach((nm2, k) => { if (nm2 !== '_') F.vars.set(nm2, v[k] === undefined ? NaN : v[k]); }); break; }
           case 'if': { const c = ev(s.c, F); if (truthy(c)) { const r = execBody(s.then, F); if (r.sig) return r; val = r.val; } else if (s.els) { const r = execBody(s.els, F); if (r.sig) return r; val = r.val; } break; }
           case 'for': {
             const a = num(ev(s.a, F)), b = num(ev(s.b, F)); let by = s.by ? num(ev(s.by, F)) : (a <= b ? 1 : -1); if (!by) err('for: adım 0 olamaz');

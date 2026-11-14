@@ -689,18 +689,20 @@
   function customPlots(candles) {
     if (!SC || !isPro() || !Array.isArray(S.custom)) return [];
     const out = [];
-    const opts = { tf: cur && cur.tf, symbol: cur ? D.meta(cur.sym).base + 'USDT' : 'BTCUSDT', getCandles: (tf) => (cur && cur.htf && cur.htf[tf]) || null };
+    const opts = { tf: cur && cur.tf, symbol: cur ? D.meta(cur.sym).base + 'USDT' + (D.meta(cur.sym).kind === 'perp' ? '.P' : '') : 'BTCUSDT', getCandles: (tf, sym) => { const v = cur && cur.htf && cur.htf[(sym || cur.sym) + '|' + tf]; return v === undefined ? null : v; } };
     for (const f of S.custom) {
       if (!f.on) continue;
       try { const r = SC.run(f.code, candles, opts); f.err = ''; for (const p of r) out.push(p); }
-      catch (e) { f.err = e.message; if (e.needTf) needHtf(e.needTf); }
+      catch (e) { f.err = e.message; if (e.needTf) needHtf(e.needTf, e.needSym); }
     }
     return out.slice(0, 24);
   }
   const htfBusy = new Set();
-  function needHtf(tf) {
-    if (!cur || !D.tfsFor(cur.sym).includes(tf)) return; const key = cur.sym + '|' + tf; if (htfBusy.has(key)) return; htfBusy.add(key); const my = cur;
-    D.load(cur.sym, tf, 60000).then((c) => { if (cur !== my) return; cur.htf = cur.htf || {}; cur.htf[tf] = c; applyCustom(); }).catch(() => {}).finally(() => htfBusy.delete(key));
+  function needHtf(tf, sym) {
+    if (!cur) return; sym = sym || cur.sym; const ok = D.tfsFor(sym).includes(tf) || (D.isCustomTf(tf) ? false : ['1m', '5m', '30m', '2h', '6h', '8h', '12h', '3d', '1M'].includes(tf));
+    const key = sym + '|' + tf; if (htfBusy.has(key)) return; htfBusy.add(key); const my = cur; cur.htf = cur.htf || {};
+    if (!ok && !D.tfsFor(sym).includes(tf)) { cur.htf[key] = false; return; }
+    D.load(sym, tf, 60000).then((c) => { if (cur !== my) return; cur.htf[key] = c; applyCustom(); }).catch(() => { if (cur === my) { cur.htf[key] = false; applyCustom(); } }).finally(() => htfBusy.delete(key));
   }
   function applyCustom() { if (!cur || !cur.data) return; cur.data.custom = customPlots(cur.candles); chart.setData(cur.data); }
   let fxEditing = null;

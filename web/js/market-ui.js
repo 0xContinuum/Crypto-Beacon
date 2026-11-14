@@ -82,6 +82,7 @@
           info: `Son halving 20 Nisan 2024. Çizgiler, halving gününün fiyatına göre çarpan olarak gösterilir: soluk çizgi önceki (2020) döngü, sarı çizgi bugünkü döngü. Şu an halving fiyatının ${fmtX(h.multiple)} seviyesinde. ATH ${h.athDays} gün önce görüldü ($${fmtUsd(h.ath)}). Sonraki halving tahmini 2028 baharı (${h.daysToNext} gün). Döngüler tekrar etmek zorunda değildir.`,
           cfg: { log: true, xMin: 0, xl: (x) => Math.round(x) + '. gün', fmt: (v) => v.toFixed(v < 10 ? 1 : 0) + '×', series, now: series.length ? { x: series[series.length - 1].x.length - 1, y: series[series.length - 1].y[series[series.length - 1].y.length - 1] } : null }, legend: cyc.map((cy, i) => [new Date(cy.start).getFullYear() + ' döngüsü', col[i % 2]]) };
       })(),
+      ...(r.x && window.BeaconMarketX ? window.BeaconMarketX.cards(r.x, { t, xMin, beam, foam, bull, bear }) : []),
     ];
   }
 
@@ -103,7 +104,11 @@
 
   async function load() {
     if (loading) return; loading = true; failed = false; render();
-    try { const cs = await D.loadLong('BTC', '1d', 5); R = M.compute(cs); if (!R) throw new Error('veri az'); }
+    try {
+      const cs = await D.loadLong('BTC', '1d', 5); R = M.compute(cs); if (!R) throw new Error('veri az');
+      try { R.x = window.BeaconMarketX ? window.BeaconMarketX.compute(cs) : null; } catch (e) { R.x = null; }
+      if (R.x) window.BeaconMarketX.loadFunding().then((f) => { if (R && R.x) { R.x.funding = f; render(); if (fullId) drawFull(); } }); // funding gelirse yön eğilimi güncellenir
+    }
     catch (e) { failed = true; }
     loading = false; render();
   }

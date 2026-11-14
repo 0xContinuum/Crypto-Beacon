@@ -103,7 +103,7 @@
     priceAt(py) { const g = this._geo; return g ? g.top - ((py - g.priceTop) / (g.priceBot - g.priceTop)) * (g.top - g.bot) : NaN; }
     yOf(p) { return this._geo ? this._geo.y(p) : NaN; }
     idxAt(px) { return Math.round(this.R - (this.plotW - px - this.barW / 2) / this.barW); }
-    _clampShift() { const max = Math.max(0, this.n - 1 + this.rightPad - 12); this.shift = Math.max(0, Math.min(max, this.shift)); }
+    _clampShift() { const max = Math.max(0, this.n - 1 + this.rightPad - 12), min = -Math.max(0, this.plotW / this.barW - 14); this.shift = Math.max(min, Math.min(max, this.shift)); } // negatif kaydırma: sağda boş alan
 
     _zoomAt(f, ax) {
       const nb = Math.max(2.5, Math.min(26, this.barW * f)); if (nb === this.barW) return;
@@ -198,7 +198,7 @@
       }
       const tfMs = d.tfMs, stepBars = [1, 2, 3, 4, 6, 8, 12, 24, 48, 96].find((s) => s * this.barW >= 70) || 192;
       c.textAlign = 'center'; c.textBaseline = 'middle'; let lastLab = '';
-      for (let i = Math.ceil(i0 / stepBars) * stepBars; i <= i1 + this.rightPad; i += stepBars) {
+      for (let i = Math.ceil(i0 / stepBars) * stepBars; i <= Math.ceil(this.R); i += stepBars) {
         const xx = Math.round(this.x(i)) + 0.5; if (xx < 20 || xx > pw - 14) continue;
         const t = new Date(cs[cs.length - 1].t + (i - (cs.length - 1)) * tfMs);
         let label, strong = false;

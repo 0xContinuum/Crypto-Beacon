@@ -458,12 +458,12 @@
     if (!S2) return r1;
     const code = '//@beacon2\n' + String(source || '');
     try {
-      const base = synth(500, 36e5), htf = (tf) => synth(200, S2.LIM && 0 || ({ '1d': 864e5, '1w': 6048e5, '4h': 144e5, '2h': 72e5, '1M': 2592e6 }[tf] || 864e5));
+      const base = synth(500, 36e5), htf = (tf, sym) => synth(200, S2.LIM && 0 || ({ '1d': 864e5, '1w': 6048e5, '4h': 144e5, '2h': 72e5, '1M': 2592e6 }[tf] || 864e5));
       const res = S2.run(code, base, { tf: '1h', getCandles: htf });
       const tit = /(?:indicator|strategy|study)\s*\(\s*(?:title\s*=\s*)?"([^"]{1,60})"/.exec(String(source || ''));
       const drawn = res.length > 0;
       if (!drawn) return r1;
-      const warnings = (r1.warnings || []).filter((w) => !/Aşama|çevrilemedi/.test(w)).slice();
+      const warnings = (r1.warnings || []).filter((w) => !/Aşama|çevrilemedi|Çıktıda çizilebilir|atlanan satır/.test(w)).slice();
       warnings.push('Bu kod Formül 2 motoruyla çalışıyor (durum değişkenleri, döngüler, çizimler dahil).');
       return { code, title: (tit && tit[1]) || r1.title, report: [], ok: true, skipped: 0, warnings, drawable: true, engine: 2 };
     } catch (e) {
