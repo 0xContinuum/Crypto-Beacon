@@ -261,6 +261,21 @@
      Her ölçü, son 4 yıllık (en çok 1461 gün) penceresindeki yüzdeliğe çevrilir (yalnızca geçmiş veriyle; geleceğe bakmaz) ve ortalaması alınır: 0-100.
      ≥90: tepe bölgesi, ≤10: dip bölgesi. Gösterge, yarılanma döngülerindeki gerçek tepe/dipleri otomatik bulup bölgelerle karşılaştırır. */
   const HALVINGS = [Date.UTC(2012, 10, 28), Date.UTC(2016, 6, 9), Date.UTC(2020, 4, 11), Date.UTC(2024, 3, 20)];
+  /** BTC'nin tamamlanmış yarılanma döngülerindeki gerçek tepe ve dipleri (veri başlangıcı döngü başını içermiyorsa 2017 tepe/dibi ayrıca denenir). */
+  function btcCycles(cs) {
+    const n = cs.length, out = [];
+    const dip = (ti) => { let bi = -1, ll = Infinity; for (let i = ti; i < n && cs[i].t <= cs[ti].t + 540 * 864e5; i++) if (cs[i].l < ll) { ll = cs[i].l; bi = i; } return bi; };
+    if (cs[0].t > HALVINGS[1] && cs[0].t < HALVINGS[2]) { // veri 2017'de başlar: 2017 tepesi / 2018 dibi
+      let ti = -1, hh = 0; for (let i = 0; i < n; i++) if (cs[i].t < HALVINGS[2] && cs[i].h > hh) { hh = cs[i].h; ti = i; }
+      if (ti > 0) { const bi = dip(ti); if (bi > 0) out.push({ top: ti, bot: bi }); }
+    }
+    for (let k = 1; k + 1 < HALVINGS.length; k++) {
+      const a = HALVINGS[k], b = HALVINGS[k + 1]; if (cs[0].t > a) continue;
+      let ti = -1, hh = 0; for (let i = 0; i < n; i++) if (cs[i].t >= a && cs[i].t < b && cs[i].h > hh) { hh = cs[i].h; ti = i; }
+      if (ti < 0) continue; const bi = dip(ti); if (bi > 0) out.push({ top: ti, bot: bi });
+    }
+    return out;
+  }
   function zoneGauge(cs, opt) {
     const TOP = (opt && opt.top) || 90, BOT = (opt && opt.bot) || 10, WIN = 1461, MINOBS = 250, n = cs.length, c = cs.map((k) => k.c);
     const sma = (k) => { const o = new Array(n).fill(NaN); let s = 0; for (let i = 0; i < n; i++) { s += c[i]; if (i >= k) s -= c[i - k]; if (i >= k - 1) o[i] = s / k; } return o; };
@@ -276,16 +291,10 @@
     // bölgeler (ardışık günler birleştirilir)
     const zones = (pred) => { const z = []; let a = -1; for (let i = 0; i <= n; i++) { const on = i < n && Number.isFinite(heat[i]) && pred(heat[i]); if (on && a < 0) a = i; if (!on && a >= 0) { z.push([a, i - 1]); a = -1; } } return z; };
     const topZ = zones((h) => h >= TOP), botZ = zones((h) => h <= BOT);
-    // gerçek tepe/dipler: ±365 günün en yükseği olup ardından 540 gün içinde en az %45 düşen noktalar (her coin için aynı kural), dip: o tepeden sonraki en düşük
-    const cycles = [], W2 = 365, near = (zs, i, before, after) => { for (const [x, y] of zs) if (y >= i - before && x <= i + after) return { hit: true, lead: i - Math.max(x, i - before) }; return { hit: false, lead: NaN }; };
-    let lastTop = -1e9;
-    for (let i = 0; i + W2 <= n - 1; i++) {
-      if (i - lastTop < W2) continue; let ok = true; for (let j = Math.max(0, i - W2); j <= i + W2; j++) if (cs[j].h > cs[i].h) { ok = false; break; } if (!ok) continue;
-      let bi = -1, ll = Infinity; for (let j = i; j < n && j <= i + 540; j++) if (cs[j].l < ll) { ll = cs[j].l; bi = j; }
-      if (bi < 0 || ll > 0.55 * cs[i].h) continue; lastTop = i;
-      const hT = Number.isFinite(heat[i]), hB = Number.isFinite(heat[bi]); if (!hT && !hB) continue;
-      cycles.push({ top: i, bot: bi, topP: cs[i].h, botP: cs[bi].l, topHeat: heat[i], botHeat: heat[bi], topHit: hT ? near(topZ, i, 90, 20) : { hit: false, lead: NaN, na: true }, botHit: hB ? near(botZ, bi, 90, 20) : { hit: false, lead: NaN, na: true } });
-    }
+    // gerçek tepe/dipler: tamamlanmış yarılanma döngüleri (BTC)
+    const near = (zs, i, before, after) => { for (const [x, y] of zs) if (y >= i - before && x <= i + after) return { hit: true, lead: i - Math.max(x, i - before) }; return { hit: false, lead: NaN }; };
+    const cycles = btcCycles(cs).map((cy) => { const hT = Number.isFinite(heat[cy.top]), hB = Number.isFinite(heat[cy.bot]);
+      return { top: cy.top, bot: cy.bot, topP: cs[cy.top].h, botP: cs[cy.bot].l, topHeat: heat[cy.top], botHeat: heat[cy.bot], topHit: hT ? near(topZ, cy.top, 90, 20) : { hit: false, lead: NaN, na: true }, botHit: hB ? near(botZ, cy.bot, 90, 20) : { hit: false, lead: NaN, na: true } }; }).filter((cy) => Number.isFinite(cy.topHeat) || Number.isFinite(cy.botHeat));
     // kesinlik: bölge günlerinin kaçı gerçek uca ±90 gün yakın
     const ext = (key) => cycles.filter((cy) => !(key === 'top' ? cy.topHit.na : cy.botHit.na)).map((cy) => cy[key]), within = (zs, pts) => { let tot = 0, ok = 0; for (const [x, y] of zs) for (let i = x; i <= y; i++) { tot++; if (pts.some((p) => Math.abs(i - p) <= 90)) ok++; } return tot ? ok / tot : NaN; };
     const covered = heat.filter(Number.isFinite).length, last = n - 1;
@@ -332,9 +341,80 @@
     return { Hs, grid, curves, price, ms, at: (hi, L) => at(ms[hi], L), pct, gap, gapAvg, sig };
   }
 
+  /* ——— Uyarlanabilir sinyaller ———
+     Sabit eşikler (ör. Pi Cycle'ın "oran 1'e değince") piyasa yapısı değişince çalışmaz: döngü tepeleri küçüldükçe oran 1'e hiç ulaşmayabilir.
+     Burada eşik, ölçünün KENDİ son 4 yıllık geçmişindeki yüzdeliktir (yalnızca geçmiş veri). Böylece sinyal "bu dönemin standartlarına göre uç" demektir. */
+  const WINR = 1461, MINR = 250;
+  function trailRank(m, i, win, minObs) { // m[i]'nin son win değerdeki yüzdeliği (0-100); geçmiş + bugün
+    if (!Number.isFinite(m[i])) return NaN; let below = 0, obs = 0; for (let j = Math.max(0, i - win + 1); j <= i; j++) if (Number.isFinite(m[j])) { obs++; if (m[j] <= m[i]) below++; } return obs >= (minObs || MINR) ? (below / obs) * 100 : NaN;
+  }
+  function trailQuant(m, i, win, p, minObs) { const a = []; for (let j = Math.max(0, i - win + 1); j <= i; j++) if (Number.isFinite(m[j])) a.push(m[j]); if (a.length < (minObs || MINR)) return NaN; a.sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; }
+  const smaArr = (c, k) => { const o = new Array(c.length).fill(NaN); let s = 0; for (let i = 0; i < c.length; i++) { s += c[i]; if (i >= k) s -= c[i - k]; if (i >= k - 1) o[i] = s / k; } return o; };
+  /** Sinyal günlerini (ardışık olanlar tek olay sayılır, gap gün ara) listeler. */
+  function episodes(flags, gap) { const ev = []; let last = -1e9; for (let i = 0; i < flags.length; i++) if (flags[i] && i - last > gap) { ev.push(i); last = i; } else if (flags[i]) last = i; return ev; }
+  /** Sinyallerin gerçek tepe/diplere karnesi: ±45 gün içinde sinyal var mı, gün farkı; hiçbir uca ±90 günden yakın olmayan "yanlış" olay sayısı. */
+  function recordOf(cs, topEv, botEv) {
+    const cyc = btcCycles(cs), W = 45, find = (ev, i) => { let best = null; for (const e of ev) if (Math.abs(e - i) <= W && (best === null || Math.abs(e - i) < Math.abs(best - i))) best = e; return best; };
+    const rows = cyc.map((c) => { const t = find(topEv, c.top), b = find(botEv, c.bot); return { top: c.top, bot: c.bot, topSig: t, botSig: b, topOff: t == null ? NaN : t - c.top, botOff: b == null ? NaN : b - c.bot }; });
+    const ex = (key) => cyc.map((c) => c[key]), far = (ev, pts) => ev.filter((e) => !pts.some((p) => Math.abs(e - p) <= 90)).length;
+    return { rows, nTop: topEv.length, nBot: botEv.length, falseTop: far(topEv, ex('top')), falseBot: far(botEv, ex('bot')), cycles: cyc.length };
+  }
+  function piAdaptive(cs) {
+    const n = cs.length, c = cs.map((k) => k.c), s111 = smaArr(c, 111), s350 = smaArr(c, 350);
+    const rt = c.map((_, i) => (Number.isFinite(s111[i]) && Number.isFinite(s350[i]) ? s111[i] / (2 * s350[i]) : NaN)), rb = c.map((_, i) => (Number.isFinite(s111[i]) && Number.isFinite(s350[i]) ? s111[i] / s350[i] : NaN));
+    const rankT = rt.map((_, i) => trailRank(rt, i, WINR)), rankB = rb.map((_, i) => trailRank(rb, i, WINR));
+    const thr = rt.map((_, i) => (i % 3 === 0 || i === n - 1 ? trailQuant(rt, i, WINR, 0.97) : NaN)); // görüntü için seyrek (3 günde bir) hesaplanır
+    for (let i = 0; i < n; i++) if (Number.isNaN(thr[i]) && i > 0 && Number.isFinite(thr[i - 1])) thr[i] = thr[i - 1]; // son bilinen eşik taşınır (geleceğe bakmaz)
+    const topEv = episodes(rankT.map((r) => r >= 97), 90), botEv = episodes(rankB.map((r) => r <= 3), 90);
+    const fixed = []; for (let i = 1; i < n; i++) if (Number.isFinite(rt[i]) && rt[i] >= 1 && !(rt[i - 1] >= 1)) fixed.push(i);
+    const fixedRec = recordOf(cs, fixed, []), rec = recordOf(cs, topEv, botEv), last = n - 1;
+    return { rt, rb, rankT, rankB, thr, topEv, botEv, fixed, rec, fixedRec, now: { rankT: rankT[last], rankB: rankB[last], rt: rt[last], thr: thr[last] } };
+  }
+  function volAdaptive(cs) {
+    const n = cs.length, c = cs.map((k) => k.c), dv = cs.map((k) => k.c * k.v), m30 = smaArr(dv, 30), m365 = smaArr(dv, 365);
+    const rel = dv.map((_, i) => (Number.isFinite(m30[i]) && Number.isFinite(m365[i]) && m365[i] > 0 ? Math.log(m30[i] / m365[i]) : NaN));
+    const hi365 = c.map((_, i) => { if (i < 364) return NaN; let h = 0; for (let j = i - 364; j <= i; j++) if (cs[j].h > h) h = cs[j].h; return h; });
+    const dd = c.map((x, i) => (Number.isFinite(hi365[i]) ? Math.log(x / hi365[i]) : NaN)), ret90 = c.map((x, i) => (i >= 90 ? Math.log(x / c[i - 90]) : NaN));
+    const rankV = rel.map((_, i) => trailRank(rel, i, WINR)), rankD = dd.map((_, i) => trailRank(dd, i, WINR)), rankR = ret90.map((_, i) => trailRank(ret90, i, WINR));
+    const thr = rel.map((_, i) => (i % 3 === 0 || i === n - 1 ? trailQuant(rel, i, WINR, 0.9) : NaN)); for (let i = 0; i < n; i++) if (Number.isNaN(thr[i]) && i > 0 && Number.isFinite(thr[i - 1])) thr[i] = thr[i - 1];
+    const topEv = episodes(rankV.map((v, i) => v >= 90 && rankR[i] >= 90 && dd[i] >= Math.log(0.9)), 60), botEv = episodes(rankV.map((v, i) => v >= 90 && rankD[i] <= 10), 60);
+    const rec = recordOf(cs, topEv, botEv), last = n - 1;
+    return { rel, thr, rankV, rankD, rankR, topEv, botEv, rec, now: { rankV: rankV[last], rankD: rankD[last], rankR: rankR[last], dd: dd[last] } };
+  }
+  function sigCard(id, title, g, t, cc, ctx, o) {
+    const { xMin, beam, bull, bear } = ctx, P = (x) => '$' + Math.round(x).toLocaleString('tr-TR'), dstr2 = (i) => new Date(t[i]).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' }), N = t.length;
+    const rows = g.rec.rows.map((r) => `${dstr2(r.top)} tepesi: ${r.topSig == null ? 'sinyal yok' : (r.topOff === 0 ? 'tepe günü' : Math.abs(r.topOff) + ' gün ' + (r.topOff < 0 ? 'önce' : 'sonra')) + ' sinyal'}; ${dstr2(r.bot)} dibi: ${r.botSig == null ? 'sinyal yok' : (r.botOff === 0 ? 'dip günü' : Math.abs(r.botOff) + ' gün ' + (r.botOff < 0 ? 'önce' : 'sonra')) + ' sinyal'}`).join(' | ');
+    const lastTop = g.topEv.length ? dstr2(g.topEv[g.topEv.length - 1]) : 'yok', lastBot = g.botEv.length ? dstr2(g.botEv[g.botEv.length - 1]) : 'yok';
+    const body = o.body(g, P), st = o.state(g);
+    return { id, title, value: st.value, unit: st.unit, badge: st.badge, tone: st.tone,
+      info: `${o.about} Son tepe sinyali: ${lastTop}; son dip sinyali: ${lastBot}. Toplam ${g.rec.nTop} tepe, ${g.rec.nBot} dip sinyali verildi; bunların ${g.rec.falseTop} ve ${g.rec.falseBot} tanesi hiçbir gerçek tepe/dibe ±90 gün yakın değildi (yanlış alarm). Karne (her döngüde gerçek uca ±45 gün): ${rows || 'veride tamamlanmış döngü yok'}. ${body} Eşikler her gün yalnızca o güne kadarki son 4 yıllık geçmişe göre hesaplanır, geleceğe bakılmaz. Az sayıda döngüye dayanır; bu bir yön tahmini değil, uç bölge uyarısıdır.`,
+      cfg: { xMin, fmt: o.fmt, under: { x: t, y: cc }, series: o.series(g, t), refs: o.refs || [], marks: g.topEv.map((k) => ({ x: t[k], color: bear })).concat(g.botEv.map((k) => ({ x: t[k], color: bull }))), now: o.now(g, t, N) },
+      legend: o.legend.concat([['Tepe sinyali', bear], ['Dip sinyali', bull], ['BTC fiyatı (altta)', '#fff']]) };
+  }
+  function piAdaptiveCard(g, t, cc, ctx) {
+    const { beam } = ctx, f2 = (v) => fmt2(v), N = t.length, fr = g.fixedRec;
+    return sigCard('piad', 'Uyarlanabilir Pi Cycle', g, t, cc, ctx, {
+      about: `Pi Cycle'ın 111/(2×350) gün ortalama oranını kullanır ama sabit "oran 1" eşiği yerine, oranın kendi son 4 yıllık geçmişindeki 97. yüzdeliğini eşik yapar: son döngülerde zirvelerin küçülmesiyle oran 1'e ulaşmayabilir, ama kendi dönemine göre yine uç olur. Dip için 111/350 oranının 3. yüzdeliği kullanılır. Klasik sabit eşik (oran ≥ 1) bu veride ${g.fixed.length} kez kesişti ve gerçek tepelere karnesi: ${fr.rows.filter((r) => r.topSig != null).length}/${fr.cycles} tepe yakalandı, ${fr.falseTop} yanlış alarm.`,
+      fmt: (v) => f2(v), legend: [['Pi oranı', beam], ['Uyarlanabilir eşik', ctx.bear]],
+      state: (x) => { const a = x.now.rankT, b = x.now.rankB; const top = a >= 97, bot = b <= 3; return { value: Number.isFinite(a) ? 'Oran ' + f2(x.now.rt) : '–', unit: Number.isFinite(a) ? 'eşik ' + f2(x.now.thr) + ' · ' + Math.round(a) + '. yüzdelik' : '', badge: top ? 'Tepe uyarısı' : bot ? 'Dip uyarısı' : 'Sinyal yok', tone: top ? 'down' : bot ? 'up' : 'flat' }; },
+      body: (x) => `Şu an oran ${f2(x.now.rt)}, uyarlanabilir eşik ${f2(x.now.thr)}; oranın son 4 yıllık yüzdeliği ${Number.isFinite(x.now.rankT) ? Math.round(x.now.rankT) : '–'}.`,
+      series: (x, tt) => [{ nm: 'Pi oranı (111G ÷ 2×350G)', f: (v) => f2(v), x: tt, y: x.rt, color: ctx.beam, w: 1.6 }, { nm: 'Uyarlanabilir eşik (97. yüzdelik)', f: (v) => f2(v), x: tt, y: x.thr, color: ctx.bear, w: 1.4, dash: [5, 4] }],
+      refs: [{ y: 1, color: 'rgba(233,238,248,.4)', label: 'klasik 1' }], now: (x, tt, n) => (Number.isFinite(x.now.rt) ? { x: tt[n - 1], y: x.now.rt } : null) });
+  }
+  function volAdaptiveCard(g, t, cc, ctx) {
+    const f2 = (v) => fmt2(v);
+    return sigCard('volad', 'Hacim Coşku ve Teslimiyet', g, t, cc, ctx, {
+      about: `Dolar hacmindeki yoğunluğu ölçer: son 30 günün ortalama dolar hacminin son 365 güne oranı (logaritmik). Hacim kendi 4 yıllık geçmişinin en yüksek %10'una çıkınca iki durum aranır: fiyat son 90 günde de kendi geçmişinin en güçlü %10'unda ve 365 günlük zirveye %10 yakınsa TEPE (coşku); fiyat 365 günlük zirveden kendi geçmişinin en derin %10'unda uzaktaysa DİP (teslimiyet, panik satışı).`,
+      fmt: (v) => f2(v), legend: [['Hacim yoğunluğu (log oran)', ctx.beam], ['Uyarlanabilir eşik (90. yüzdelik)', ctx.bear]],
+      state: (x) => { const v = x.now.rankV, top = v >= 90 && x.now.rankR >= 90 && x.now.dd >= Math.log(0.9), bot = v >= 90 && x.now.rankD <= 10; return { value: Number.isFinite(v) ? Math.round(v) + '. yüzdelik' : '–', unit: 'hacim yoğunluğu', badge: top ? 'Coşku' : bot ? 'Teslimiyet' : v >= 90 ? 'Yüksek hacim' : 'Sakin', tone: top ? 'down' : bot ? 'up' : 'flat' }; },
+      body: (x) => `Şu an hacim yoğunluğu son 4 yılın ${Number.isFinite(x.now.rankV) ? Math.round(x.now.rankV) : '–'}. yüzdeliğinde, fiyatın 365 günlük zirveye uzaklığı ${Number.isFinite(x.now.dd) ? Math.round((Math.exp(x.now.dd) - 1) * 100) : '–'}%. Hacim verisi borsa hacmidir; borsalar arası kaymalar ölçüyü etkileyebilir.`,
+      series: (x, tt) => [{ nm: 'Hacim yoğunluğu (log oran)', f: (v) => f2(v), x: tt, y: x.rel, color: ctx.beam, w: 1.6 }, { nm: 'Uyarlanabilir eşik (90. yüzdelik)', f: (v) => f2(v), x: tt, y: x.thr, color: ctx.bear, w: 1.4, dash: [5, 4] }],
+      refs: [{ y: 0, color: 'rgba(233,238,248,.3)', label: '0' }], now: (x, tt, n) => (Number.isFinite(x.rel[n - 1]) ? { x: tt[n - 1], y: x.rel[n - 1] } : null) });
+  }
+
   function compute(cs) {
     if (!cs || cs.length < 400) return null;
-    return { t: cs.map((k) => k.t), bow: bowTension(cs), storm: stormGauge(cs), drop: dropGauge(cs), zone: zoneGauge(cs), touch: touchMap(cs), funding: null, fund: null };
+    return { t: cs.map((k) => k.t), bow: bowTension(cs), storm: stormGauge(cs), drop: dropGauge(cs), zone: zoneGauge(cs), touch: touchMap(cs), piad: piAdaptive(cs), volad: volAdaptive(cs), funding: null, fund: null };
   }
 
   /* ——— ücretsiz funding verisi (Binance vadeli genel API; erişilemezse null) ——— */
@@ -421,7 +501,7 @@
 
     // 1d) Seviye Değme Olasılığı
     const tm = X.touch;
-    if (tm) {
+    if (tm && ctx.showTouch) { // şimdilik herkese kapalı (ctx.showTouch ile açılır)
       const P = (x) => '$' + Math.round(x).toLocaleString('tr-TR'), pc = (v) => '%' + Math.round(v * 100), pct = tm.pct, badge = !Number.isFinite(pct) ? '–' : pct < 25 ? 'Sakin' : pct < 60 ? 'Normal' : pct < 85 ? 'Hareketli' : 'Fırtına';
       const dn = tm.at(2, -10), up = tm.at(2, 10), row = (L) => `${L > 0 ? '+' : '−'}%${Math.abs(L)} (${P(tm.price * (1 + L / 100))}): 7 günde ${pc(tm.at(0, L))}, 14 günde ${pc(tm.at(1, L))}, 30 günde ${pc(tm.at(2, L))}`;
       const calTxt = tm.ms[2].cal.map((x) => `${x.L > 0 ? '+' : '−'}%${Math.abs(x.L)}: tahmin ${pc(x.pred)}, gerçekleşen ${pc(x.real)}`).join('; ');
@@ -433,6 +513,9 @@
           refs: [{ y: 0.5, color: 'rgba(233,238,248,.3)', label: '50' }, { y: 0.1, color: 'rgba(233,238,248,.2)', label: '10' }], marks: [{ x: 0, color: 'rgba(233,238,248,.45)' }] },
         legend: [['30 günde', beam], ['14 günde', 'rgba(233,238,248,.75)'], ['7 günde', 'rgba(233,238,248,.4)']] });
     }
+
+    if (X.piad) out.push(piAdaptiveCard(X.piad, t, ctx.c, ctx));
+    if (X.volad) out.push(volAdaptiveCard(X.volad, t, ctx.c, ctx));
 
     // 2) Yay Gerilimi (varsayılan kapalı: sentetik sınamada iddiası tutmadı; ctx.showBow ile açılır)
     if (!ctx.showBow) return out;
@@ -452,5 +535,5 @@
     return out;
   }
 
-  return { compute, cards, zoneCard, touchMap, loadFunding, loadFundingSeries, fundDaily, fundStats, zoneGauge, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
+  return { compute, cards, zoneCard, touchMap, piAdaptive, volAdaptive, btcCycles, loadFunding, loadFundingSeries, fundDaily, fundStats, zoneGauge, moonAt, PHASES, stormGauge, dropGauge, moonTest, bowTension };
 });

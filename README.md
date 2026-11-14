@@ -156,3 +156,6 @@ Pine çevirici önce hafif v1'i dener; tam çeviremezse kodu `//@beacon2` başl�
 - Örnek kullanıcı göstergesi: `tests/fixtures/beacon/Denge_Hatti.beacon.txt` (ƒx Göstergelerim'e yapıştırın).
 - **Seviye Değme Olasılığı** (piyasa, Pro): BTC'nin 7/14/30 günde belirli bir seviyeye (fitil dahil) dokunma olasılığı; güvenilirlik sınaması kartta.
 - Piyasa kartlarının hepsinde imleçle tarih/değer ipucu vardır.
+- **Döngü Dip/Tepe Bölgeleri** yine yalnızca BTC; gerçek tepe/dipler yarılanma döngülerinden bulunur (kesikli çizgiler ilk haline döndü).
+- **Seviye Değme Olasılığı** şimdilik kapalı (`cards(X, {showTouch: true})` ile açılır).
+- **Uyarlanabilir Pi Cycle** ve **Hacim Coşku ve Teslimiyet** (Pro): eşikler ölçünün kendi son 4 yıllık yüzdeliğidir; kartta gerçek döngü tepe/diplerine karne ve yanlış alarm sayısı gösterilir.
