@@ -32,6 +32,10 @@ class Settings:
     pro_seconds_per_ad: int = 3600
     pro_max_seconds: int = 6 * 3600
     pro_ads_per_day: int = 6
+    ad_cooldown_seconds: int = 900   # aynı kullanıcının iki reklamı arası en az bekleme (CPM'i korumak için)
+    crypto_pay_token: str = ""       # @CryptoBot > Crypto Pay > uygulama anahtarı
+    crypto_pay_testnet: bool = False
+    pay_http: object = None          # test için: callable(method, payload) -> result
     support_ads_per_day: int = 20
     min_payout_micro: int = 100 * MICRO
     default_share_bps: int = 5000
@@ -52,7 +56,8 @@ class Settings:
             admin_ids=_ids(e("ADMIN_IDS", "6394985954")) or {6394985954},
             adsgram_secret=e("ADSGRAM_SECRET", ""), adsgram_block_id=e("ADSGRAM_BLOCK_ID", ""),
             webhook_secret=e("WEBHOOK_SECRET", ""), app_url=e("APP_URL", "").rstrip("/"),
-            public_url=e("PUBLIC_URL", "").rstrip("/"), site_url=e("SITE_URL", "").rstrip("/"), dev_mode=e("DEV_MODE", "") == "1", market_auto=e("MARKET_AUTO", "") == "1")
+            public_url=e("PUBLIC_URL", "").rstrip("/"), site_url=e("SITE_URL", "").rstrip("/"), dev_mode=e("DEV_MODE", "") == "1", market_auto=e("MARKET_AUTO", "") == "1",
+            ad_cooldown_seconds=int(e("AD_COOLDOWN_SECONDS", "900") or 900), crypto_pay_token=e("CRYPTO_PAY_TOKEN", ""), crypto_pay_testnet=e("CRYPTO_PAY_TESTNET", "") == "1")
 
     def now(self):
         return int(self.clock())
@@ -316,6 +321,10 @@ def sync_clean(data):
         v = data.get(k)
         if isinstance(v, dict):
             out[k] = {"u": int(_num(v.get("u", 0))), "v": v.get("v")}
+    stv = data.get("st")
+    if isinstance(stv, dict):
+        ids = stv.get("v") if isinstance(stv.get("v"), list) else []
+        out["st"] = {"u": int(_num(stv.get("u", 0))), "v": sorted({int(x) for x in ids[:60] if isinstance(x, (int, float)) and 0 < x < 10**12})}
     ctf = out.get("ctf")
     if ctf is not None:
         if not isinstance(ctf["v"], list) or len(ctf["v"]) > 8:
@@ -340,3 +349,71 @@ def sync_clean(data):
     if len(json.dumps(out, ensure_ascii=False)) > SYNC_MAX_BYTES:
         raise ValueError("Veri çok büyük")
     return out
+
+
+# ——— gösterge mağazası ———
+STORE_AUD = ("public", "broadcasters", "pro")
+STORE_ASSETS = ("USDT", "TON")  # TON = GRAM (Toncoin'in yeni adı)
+STORE_MAX_CODE = 30000
+
+
+def store_clean(b, partial=False):
+    """Yönetici formunu doğrular; temiz alanlar sözlüğü döndürür, geçersizse ValueError."""
+    out = {}
+    def need(k, v, lo, hi, label):
+        v = clean(v, hi)
+        if len(v) < lo: raise ValueError(f"{label} en az {lo} karakter olmalı")
+        out[k] = v
+    need("title", b.get("title"), 3, 80, "Başlık")
+    need("summary", b.get("summary"), 0, 160, "Kısa açıklama")
+    out["description"] = clean(b.get("description"), 4000)
+    code = (b.get("code") or "").replace("\r\n", "\n")
+    if not partial and len(code.strip()) < 10: raise ValueError("Gösterge kodu gerekli")
+    if len(code) > STORE_MAX_CODE: raise ValueError("Kod çok uzun")
+    out["code"] = code
+    aud = b.get("audience", "public")
+    if aud not in STORE_AUD: raise ValueError("Hedef kitle geçersiz")
+    out["audience"] = aud
+    asset = b.get("asset", "USDT")
+    if asset not in STORE_ASSETS: raise ValueError("Para birimi geçersiz")
+    out["asset"] = asset
+    try:
+        price = Decimal(str(b.get("price", "0") or "0"))
+    except InvalidOperation:
+        raise ValueError("Fiyat geçersiz")
+    if price < 0 or price > 10000 or price.as_tuple().exponent < -6: raise ValueError("Fiyat 0 ile 10000 arasında, en çok 6 ondalık olmalı")
+    out["price_micro"] = int((price * MICRO).to_integral_value())
+    try:
+        dur = int(b.get("duration_days", 0) or 0)
+    except (TypeError, ValueError):
+        raise ValueError("Süre geçersiz")
+    if not 0 <= dur <= 3650: raise ValueError("Süre 0 (sınırsız) ile 3650 gün arasında olmalı")
+    out["duration_days"] = dur
+    out["status"] = "hidden" if b.get("status") == "hidden" else "active"
+    img = b.get("image")
+    if img:
+        try: valid_image(img, 300_000)
+        except ValueError as e: raise ValueError(str(e))
+        out["image"] = img
+    elif "image" in b and img == "":
+        out["image"] = ""
+    return out
+
+
+def audience_ok(aud, is_admin, pro_active, is_bcast):
+    if is_admin or aud == "public": return True
+    if aud == "pro": return bool(pro_active)
+    if aud == "broadcasters": return bool(is_bcast)
+    return False
+
+
+def price_text(micro):
+    d = (Decimal(micro) / MICRO).normalize()
+    return format(d, "f")
+
+
+def cryptopay_sig_ok(token, raw, sig):
+    """Crypto Pay webhook imzası: HMAC-SHA256(SHA256(token), ham gövde), onaltılık."""
+    if not token or not sig: return False
+    key = hashlib.sha256(token.encode()).digest()
+    return hmac.compare_digest(hmac.new(key, raw, hashlib.sha256).hexdigest(), sig.strip().lower())

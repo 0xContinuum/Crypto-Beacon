@@ -27,6 +27,10 @@ SCHEMA = [
     "CREATE TABLE IF NOT EXISTS grants (user_id BIGINT PRIMARY KEY, until BIGINT DEFAULT 0, note TEXT DEFAULT '')",
     "CREATE TABLE IF NOT EXISTS login_codes (code TEXT PRIMARY KEY, user_id BIGINT DEFAULT 0, username TEXT DEFAULT '', first_name TEXT DEFAULT '', created_at BIGINT, used INTEGER DEFAULT 0)",
     "CREATE TABLE IF NOT EXISTS user_sync (user_id BIGINT PRIMARY KEY, data TEXT, rev BIGINT DEFAULT 0, updated_at BIGINT DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS store_items ({PK}, title TEXT, summary TEXT DEFAULT '', description TEXT DEFAULT '', code TEXT, image TEXT DEFAULT '', audience TEXT DEFAULT 'public', price_micro BIGINT DEFAULT 0, asset TEXT DEFAULT 'USDT', duration_days INT DEFAULT 0, status TEXT DEFAULT 'active', created_at BIGINT, updated_at BIGINT)",
+    "CREATE TABLE IF NOT EXISTS store_likes (item_id BIGINT, user_id BIGINT, PRIMARY KEY (item_id, user_id))",
+    "CREATE TABLE IF NOT EXISTS store_access (user_id BIGINT, item_id BIGINT, until BIGINT DEFAULT 0, source TEXT DEFAULT 'free', created_at BIGINT, PRIMARY KEY (user_id, item_id))",
+    "CREATE TABLE IF NOT EXISTS store_orders ({PK}, user_id BIGINT, item_id BIGINT, asset TEXT, amount_micro BIGINT, provider TEXT DEFAULT 'cryptopay', provider_ref TEXT DEFAULT '', pay_url TEXT DEFAULT '', status TEXT DEFAULT 'pending', created_at BIGINT, paid_at BIGINT DEFAULT 0)",
     "CREATE TABLE IF NOT EXISTS audit ({PK}, actor BIGINT, action TEXT, detail TEXT DEFAULT '', created_at BIGINT)",
 ]
 

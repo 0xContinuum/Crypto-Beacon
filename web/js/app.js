@@ -29,7 +29,7 @@
   const haptic = (k) => { try { if (!tg || !tg.HapticFeedback) return; k === 'ok' ? tg.HapticFeedback.notificationOccurred('success') : tg.HapticFeedback.impactOccurred('light'); } catch (e) {} };
 
   /* ——— kalıcı durum (localStorage + Telegram CloudStorage) ——— */
-  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false, rej: false }, form: { pivot: 10, tol: 1.5, history: true, maxForms: 120 }, proUntil: 0, ads: { d: '', n: 0 }, custom: [], ctf: [], ctfU: 0, ts: 0 };
+  const DEF = { legal: false, sym: 'BTC', tf: '1h', layers: { markers: true, pos: true, form: true, ema: true, vol: true, bb: false, rsi: false, rej: false }, form: { pivot: 10, tol: 1.5, history: true, maxForms: 120 }, proUntil: 0, ads: { d: '', n: 0 }, custom: [], ctf: [], ctfU: 0, st: [], stU: 0, ts: 0 };
   let S = JSON.parse(JSON.stringify(DEF));
   try { const r = JSON.parse(localStorage.getItem('bcn') || 'null'); if (r) S = Object.assign(S, r, { layers: Object.assign({}, DEF.layers, r.layers || {}) }); } catch (e) {}
   S.form = Object.assign({}, DEF.form, S.form);
@@ -186,7 +186,7 @@
       key: cur.key, candles, tfMs: r.cfg.ms,
       ema20: a.ema20, ema50: a.ema50, ema200: a.ema200, rsi: a.rsi, bbUp: a.bbUp, bbLo: a.bbLo,
       markers: r.sigs.map((s) => ({ i: s.i, side: s.side })), position: last, formation: cur.formation, formHistory: S.form.history ? cur.hist : [],
-      custom: rejPlots(candles).concat(customPlots(candles)),
+      custom: rejPlots(candles).concat(storePlots(candles), customPlots(candles)),
     };
     chart.setData(cur.data);
     $('skel').style.display = 'none'; $('chartMsg').classList.remove('on');
@@ -418,7 +418,9 @@
   }
   /* sunucu modu: reklam oturumu sunucuda açılır, Adsgram Reward URL bildirimi doğrulanınca Pro verilir */
   async function adForSession(placement, postId) {
-    const r = await API.call('POST', '/api/ads/start', { placement, post_id: postId || 0 });
+    let r;
+    try { r = await API.call('POST', '/api/ads/start', { placement, post_id: postId || 0 }); }
+    catch (e) { if (e.status === 429 && e.data && e.data.retry_after) throw new Error('Bir sonraki reklam için ' + Math.ceil(e.data.retry_after / 60) + ' dk bekleyin'); throw e; }
     let shown = false;
     if (DEMO) { await sleep(1500); await API.call('POST', '/api/dev/reward', {}); shown = true; }
     else {
@@ -686,10 +688,24 @@
 
   /* ——— Pro: kendi göstergelerim (formül dili, güvenli ayrıştırıcı) ——— */
   const FX_MAX = 8;
+  function scriptOpts() {
+    return { tf: cur && cur.tf, symbol: cur ? D.meta(cur.sym).base + 'USDT' + (D.meta(cur.sym).kind === 'perp' ? '.P' : '') : 'BTCUSDT', getCandles: (tf, sym) => { const v = cur && cur.htf && cur.htf[(sym || cur.sym) + '|' + tf]; return v === undefined ? null : v; } };
+  }
+  /* mağaza göstergeleri: erişim sunucuda doğrulanır, Pro şartı yok */
+  function storePlots(candles) {
+    const BS = window.BeaconStore; if (!SC || !BS || !srv() || !Array.isArray(S.st) || !S.st.length) return [];
+    const out = [], opts = scriptOpts();
+    if (S.st.some((i) => BS.code(i) === null && !BS._state.codes.hasOwnProperty(i))) setTimeout(() => BS.ensureCodes(), 0);
+    for (const id of S.st) {
+      const code = BS.code(id); if (!code) continue;
+      try { for (const p of SC.run(code, candles, opts)) out.push(p); } catch (e) { if (e.needTf) needHtf(e.needTf, e.needSym); }
+    }
+    return out.slice(0, 16);
+  }
   function customPlots(candles) {
     if (!SC || !isPro() || !Array.isArray(S.custom)) return [];
     const out = [];
-    const opts = { tf: cur && cur.tf, symbol: cur ? D.meta(cur.sym).base + 'USDT' + (D.meta(cur.sym).kind === 'perp' ? '.P' : '') : 'BTCUSDT', getCandles: (tf, sym) => { const v = cur && cur.htf && cur.htf[(sym || cur.sym) + '|' + tf]; return v === undefined ? null : v; } };
+    const opts = scriptOpts();
     for (const f of S.custom) {
       if (!f.on) continue;
       try { const r = SC.run(f.code, candles, opts); f.err = ''; for (const p of r) out.push(p); }
@@ -705,7 +721,7 @@
     D.load(sym, tf, 60000).then((c) => { if (cur !== my) return; cur.htf[key] = c; applyCustom(); }).catch(() => { if (cur === my) { cur.htf[key] = false; applyCustom(); } }).finally(() => htfBusy.delete(key));
   }
   function rejPlots(candles) { try { return S.layers.rej && isPro() && window.BeaconRegime ? window.BeaconRegime.plots(candles) : []; } catch (e) { return []; } }
-  function applyCustom() { if (!cur || !cur.data) return; cur.data.custom = rejPlots(cur.candles).concat(customPlots(cur.candles)); chart.setData(cur.data); }
+  function applyCustom() { if (!cur || !cur.data) return; cur.data.custom = rejPlots(cur.candles).concat(storePlots(cur.candles), customPlots(cur.candles)); chart.setData(cur.data); }
   let fxEditing = null;
   function fxRender() {
     const pro = isPro(), list = S.custom || [];
@@ -840,5 +856,5 @@
   $('shCopy').onclick = async () => { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': shareBlob })]); toast('Görsel kopyalandı'); } catch (e) { toast('Kopyalanamadı: İndir\'i kullanın'); } };
   $('shareBtn').onclick = () => { haptic(); const cv = $('cv'); if (!cv) return; shareImage(cv, D.label(S.sym) + ' · ' + TFL(S.tf), 'Skor ' + $('score').textContent + ' · ' + $('verd').textContent + ' · ' + $('price').textContent, 'beacon-' + S.sym + '-' + S.tf); };
 
-  window.__beacon = { syncNow, save, fxRender, shareImage, setFs, applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
+  window.__beacon = { storePlots, syncNow, save, fxRender, shareImage, setFs, applyCustom, customPlots, toast, haptic, openSheet, closeSheet, renderPro, adForSession, go, state: () => S, chart, calc, buildScan, buildPerf, uid, isOwner, isPro, cur: () => cur };
 })();

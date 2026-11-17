@@ -9,6 +9,7 @@ import threading
 import traceback
 import urllib.request
 import hmac
+from decimal import Decimal
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -138,9 +139,9 @@ def create_app(S=None, db=None):
         def deco(fn):
             async def endpoint(request):
                 try:
-                    body = {}
+                    body, braw = {}, b""
                     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-                        raw = await request.body()
+                        raw = braw = await request.body()
                         if len(raw) > 700_000:
                             raise ApiError(413, "İstek çok büyük")
                         if raw:
@@ -153,6 +154,7 @@ def create_app(S=None, db=None):
 
                     def work():
                         ctx = Ctx(request, body)
+                        ctx.raw = braw
                         if not public:
                             ctx.user = auth(request)
                             ctx.is_admin = ctx.user["id"] in S.admin_ids
@@ -352,7 +354,7 @@ def create_app(S=None, db=None):
         return {"id": uid, "username": ctx.user["username"], "first_name": ctx.user["first_name"], "is_admin": ctx.is_admin,
                 "broadcaster": bcast_public(b) if b else None, "pro": pro,
                 "ads": {"pro_used": pu, "pro_limit": S.pro_ads_per_day, "support_used": su, "support_limit": S.support_ads_per_day,
-                        "pro_seconds_per_ad": S.pro_seconds_per_ad, "pro_max_seconds": S.pro_max_seconds},
+                        "pro_seconds_per_ad": S.pro_seconds_per_ad, "pro_max_seconds": S.pro_max_seconds, "cooldown_seconds": S.ad_cooldown_seconds, "wait_seconds": ad_wait(uid)},
                 "config": {"adsgram_block_id": S.adsgram_block_id, "min_payout_micro": S.min_payout_micro, "demo": S.dev_mode}, "now": now()}
 
     # ——— akış ———
@@ -482,6 +484,13 @@ def create_app(S=None, db=None):
         return bcast_public(b, f, mine, n)
 
     # ——— reklam ———
+    def ad_wait(uid):
+        """Aynı kullanıcının son doğrulanmış reklamından beri kalan bekleme (sn). Arka arkaya gösterim CPM'i düşürür."""
+        if S.ad_cooldown_seconds <= 0: return 0
+        r = db.one("SELECT MAX(verified_at) AS v FROM ad_sessions WHERE user_id=? AND status='verified'", (uid,))
+        last = int(r["v"] or 0) if r else 0
+        return max(0, last + S.ad_cooldown_seconds - now()) if last else 0
+
     @route("/api/ads/start", methods=("POST",))
     def ads_start(ctx):
         uid, placement = ctx.user["id"], ctx.body.get("placement")
@@ -495,6 +504,8 @@ def create_app(S=None, db=None):
             if p["author_id"] != uid:  # yayıncı kendi sayfasından izlerse gelir sahibe yazılır
                 src_type, src_id = "broadcaster", p["author_id"]
         pu, su = ads_today(uid)
+        wait = ad_wait(uid)
+        if wait > 0: raise ApiError(429, f"Bir sonraki reklam için {max(1, (wait + 59) // 60)} dakika bekleyin", retry_after=wait)
         if placement.startswith("pro"):
             b = db.one("SELECT * FROM broadcasters WHERE user_id=?", (uid,))
             ps = pro_state(uid, ctx.is_admin, bcast=b)
@@ -548,6 +559,210 @@ def create_app(S=None, db=None):
         if not s: raise ApiError(404, "Oturum yok")
         b = db.one("SELECT * FROM broadcasters WHERE user_id=?", (ctx.user["id"],))
         return {"status": s["status"], "placement": s["placement"], "pro": pro_state(ctx.user["id"], ctx.is_admin, bcast=b)}
+
+
+    # ——— gösterge mağazası ———
+    def store_ctx(uid, is_admin):
+        b = db.one("SELECT * FROM broadcasters WHERE user_id=?", (uid,))
+        pro = pro_state(uid, is_admin, bcast=b)["active"]
+        return {"admin": is_admin, "pro": pro, "bcast": bool(b and b["status"] == "active")}
+
+    def store_access_row(uid, iid):
+        a = db.one("SELECT until FROM store_access WHERE user_id=? AND item_id=?", (uid, iid))
+        if a and (a["until"] == 0 or a["until"] > now()): return a
+        return None
+
+    def store_row(r, uid, sc, full=False):
+        a = store_access_row(uid, r["id"])
+        allowed = C.audience_ok(r["audience"], sc["admin"], sc["pro"], sc["bcast"])
+        likes = db.one("SELECT COUNT(*) AS n FROM store_likes WHERE item_id=?", (r["id"],))["n"]
+        mine = bool(db.one("SELECT 1 AS x FROM store_likes WHERE item_id=? AND user_id=?", (r["id"], uid)))
+        owned = bool(a) or sc["admin"]
+        d = {"id": r["id"], "title": r["title"], "summary": r["summary"], "audience": r["audience"], "price": C.price_text(r["price_micro"]), "paid": r["price_micro"] > 0,
+             "asset": r["asset"], "duration_days": r["duration_days"], "likes": likes, "liked": mine, "has_image": bool(r["image"]), "allowed": allowed,
+             "owned": owned, "until": (a["until"] if a else 0), "status": r["status"], "updated_at": r["updated_at"]}
+        if full: d.update({"description": r["description"], "image": r["image"]})
+        return d
+
+    @route("/api/store")
+    def store_list(ctx):
+        sc = store_ctx(ctx.user["id"], ctx.is_admin)
+        rows = db.q("SELECT * FROM store_items" + ("" if ctx.is_admin else " WHERE status='active'") + " ORDER BY id DESC")
+        return {"items": [store_row(r, ctx.user["id"], sc) for r in rows], "admin": ctx.is_admin}
+
+    def store_get(ctx):
+        r = db.one("SELECT * FROM store_items WHERE id=?", (ctx.p["id"],))
+        if not r or (r["status"] != "active" and not ctx.is_admin): raise ApiError(404, "Gösterge bulunamadı")
+        return r
+
+    @route("/api/store/{id:int}")
+    def store_detail(ctx):
+        r = store_get(ctx)
+        return store_row(r, ctx.user["id"], store_ctx(ctx.user["id"], ctx.is_admin), full=True)
+
+    @route("/api/store/{id:int}/like", methods=("POST",))
+    def store_like(ctx):
+        r = store_get(ctx); uid = ctx.user["id"]; rate(uid, "slike", 30, 60)
+        with db.tx():
+            if db.one("SELECT 1 AS x FROM store_likes WHERE item_id=? AND user_id=?", (r["id"], uid)):
+                db.x("DELETE FROM store_likes WHERE item_id=? AND user_id=?", (r["id"], uid)); liked = False
+            else:
+                db.x("INSERT INTO store_likes (item_id, user_id) VALUES (?,?)", (r["id"], uid)); liked = True
+        return {"liked": liked, "likes": db.one("SELECT COUNT(*) AS n FROM store_likes WHERE item_id=?", (r["id"],))["n"]}
+
+    def grant_item(uid, r, source):
+        t = now(); a = db.one("SELECT until FROM store_access WHERE user_id=? AND item_id=?", (uid, r["id"]))
+        if r["duration_days"] == 0: until = 0
+        else:
+            base = max(t, a["until"]) if a and a["until"] else t
+            until = base + r["duration_days"] * 86400
+        db.x("INSERT INTO store_access (user_id, item_id, until, source, created_at) VALUES (?,?,?,?,?) ON CONFLICT (user_id, item_id) DO UPDATE SET until=excluded.until, source=excluded.source", (uid, r["id"], until, source, t))
+        return until
+
+    @route("/api/store/{id:int}/claim", methods=("POST",))
+    def store_claim(ctx):
+        r = store_get(ctx); uid = ctx.user["id"]; sc = store_ctx(uid, ctx.is_admin)
+        if r["price_micro"] > 0: raise ApiError(402, "Bu gösterge ücretli")
+        if not C.audience_ok(r["audience"], sc["admin"], sc["pro"], sc["bcast"]): raise ApiError(403, "Bu gösterge " + {"pro": "Pro üyelere", "broadcasters": "yayıncılara"}.get(r["audience"], "belirli kullanıcılara") + " özel")
+        if not store_access_row(uid, r["id"]):
+            with db.tx(): db.x("INSERT INTO store_access (user_id, item_id, until, source, created_at) VALUES (?,?,0,'free',?) ON CONFLICT (user_id, item_id) DO UPDATE SET until=0", (uid, r["id"], now()))
+        return {"ok": True}
+
+    @route("/api/store/{id:int}/code")
+    def store_code(ctx):
+        r = store_get(ctx); uid = ctx.user["id"]; sc = store_ctx(uid, ctx.is_admin)
+        if not C.audience_ok(r["audience"], sc["admin"], sc["pro"], sc["bcast"]): raise ApiError(403, "Bu gösterge hesabınıza açık değil")
+        a = store_access_row(uid, r["id"])
+        if not a and not ctx.is_admin: raise ApiError(402 if r["price_micro"] else 403, "Önce göstergeyi ekleyin" if not r["price_micro"] else "Süreniz bitti veya satın alınmadı")
+        return {"id": r["id"], "title": r["title"], "code": r["code"], "until": a["until"] if a else 0, "updated_at": r["updated_at"]}
+
+    # —— ödeme: Crypto Pay (USDT ve TON/GRAM), webhook ile otomatik ——
+    def cp_call(method, payload):
+        if S.pay_http: return S.pay_http(method, payload)
+        if not S.crypto_pay_token: raise ApiError(503, "Ödeme henüz yapılandırılmadı")
+        base = "https://testnet-pay.crypt.bot/api/" if S.crypto_pay_testnet else "https://pay.crypt.bot/api/"
+        try:
+            req = urllib.request.Request(base + method, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json", "Crypto-Pay-API-Token": S.crypto_pay_token})
+            j = json.loads(urllib.request.urlopen(req, timeout=15).read())
+        except Exception:
+            raise ApiError(502, "Ödeme sağlayıcısına ulaşılamadı")
+        if not j.get("ok"): raise ApiError(502, "Ödeme sağlayıcısı hata verdi")
+        return j["result"]
+
+    def order_paid(oid):
+        """Ödeme doğrulandı: siparişi tek sefer 'paid' yapar ve erişimi verir (tekrarlanan bildirimler zararsız)."""
+        with db.tx():
+            o = db.one("SELECT * FROM store_orders WHERE id=?", (oid,))
+            if not o or o["status"] == "paid": return False
+            r = db.one("SELECT * FROM store_items WHERE id=?", (o["item_id"],))
+            db.x("UPDATE store_orders SET status='paid', paid_at=? WHERE id=? AND status<>'paid'", (now(), oid))
+            if r: grant_item(o["user_id"], r, "paid")
+        if r:
+            notify(o["user_id"], f"✅ Ödemeniz alındı: {r['title']} göstergesi hesabınıza eklendi. Grafikte Gösterge Mağazası'ndan açabilirsiniz.")
+            notify_admins(f"💰 Gösterge satışı: {r['title']} · {C.price_text(o['amount_micro'])} {o['asset']} · kullanıcı {o['user_id']}")
+            audit(o["user_id"], "store_paid", f"order {oid} item {r['id']}")
+        return True
+
+    @route("/api/store/{id:int}/buy", methods=("POST",))
+    def store_buy(ctx):
+        r = store_get(ctx); uid = ctx.user["id"]; sc = store_ctx(uid, ctx.is_admin); rate(uid, "sbuy", 8, 3600)
+        if r["price_micro"] <= 0: raise ApiError(400, "Bu gösterge ücretsiz")
+        if not C.audience_ok(r["audience"], sc["admin"], sc["pro"], sc["bcast"]): raise ApiError(403, "Bu gösterge hesabınıza açık değil")
+        t = now()
+        old = db.one("SELECT * FROM store_orders WHERE user_id=? AND item_id=? AND status='pending' AND created_at>=? ORDER BY id DESC LIMIT 1", (uid, r["id"], t - 3000))
+        if old and old["pay_url"] and old["amount_micro"] == r["price_micro"]: return {"order": old["id"], "pay_url": old["pay_url"]}
+        with db.tx():
+            db.x("INSERT INTO store_orders (user_id, item_id, asset, amount_micro, status, created_at) VALUES (?,?,?,?,?,?)", (uid, r["id"], r["asset"], r["price_micro"], "pending", t))
+            oid = db.one("SELECT MAX(id) AS i FROM store_orders WHERE user_id=?", (uid,))["i"]
+        inv = cp_call("createInvoice", {"currency_type": "crypto", "asset": r["asset"], "amount": C.price_text(r["price_micro"]), "description": f"Beacon: {r['title']}"[:1000],
+                                        "payload": str(oid), "expires_in": 3600, "allow_comments": False, "allow_anonymous": False,
+                                        **({"paid_btn_name": "callback", "paid_btn_url": S.app_url} if S.app_url else {})})
+        url = inv.get("mini_app_invoice_url") or inv.get("bot_invoice_url") or inv.get("pay_url") or ""
+        db.x("UPDATE store_orders SET provider_ref=?, pay_url=? WHERE id=?", (str(inv.get("invoice_id", "")), url, oid))
+        return {"order": oid, "pay_url": url}
+
+    @route("/api/store/order/{id:int}")
+    def store_order(ctx):
+        o = db.one("SELECT * FROM store_orders WHERE id=? AND user_id=?", (ctx.p["id"], ctx.user["id"]))
+        if not o: raise ApiError(404, "Sipariş yok")
+        if o["status"] == "pending" and o["provider_ref"] and (S.crypto_pay_token or S.pay_http) and now() - o["created_at"] < 7200:
+            try:  # webhook gecikirse sağlayıcıdan doğrula
+                res = cp_call("getInvoices", {"invoice_ids": o["provider_ref"]})
+                items = res.get("items", res) if isinstance(res, dict) else res
+                if items and items[0].get("status") == "paid" and str(items[0].get("asset", o["asset"])) == o["asset"]:
+                    order_paid(o["id"]); o = db.one("SELECT * FROM store_orders WHERE id=?", (o["id"],))
+            except ApiError:
+                pass
+        return {"status": o["status"], "item": o["item_id"]}
+
+    @route("/api/store/crypto-webhook", methods=("POST",), public=True)
+    def store_webhook(ctx):
+        raw = ctx.raw
+        if not C.cryptopay_sig_ok(S.crypto_pay_token, raw, ctx.request.headers.get("crypto-pay-api-signature", "")): raise ApiError(403, "İmza geçersiz")
+        try: upd = json.loads(raw)
+        except ValueError: raise ApiError(400, "Geçersiz JSON")
+        if upd.get("update_type") != "invoice_paid": return {"ok": True}
+        inv = upd.get("payload") or {}
+        o = db.one("SELECT * FROM store_orders WHERE provider_ref=?", (str(inv.get("invoice_id", "")),)) if inv.get("invoice_id") is not None else None
+        if not o and str(inv.get("payload", "")).isdigit(): o = db.one("SELECT * FROM store_orders WHERE id=?", (int(inv["payload"]),))
+        if not o: return {"ok": True}
+        try:
+            if inv.get("asset") and inv["asset"] != o["asset"]: raise ValueError
+            if inv.get("amount") is not None and Decimal(str(inv["amount"])) * C.MICRO < o["amount_micro"]: raise ValueError
+        except (ValueError, ArithmeticError):
+            audit(0, "store_pay_mismatch", f"order {o['id']}"); return {"ok": True}
+        order_paid(o["id"])
+        return {"ok": True}
+
+    @route("/api/dev/pay/{id:int}", methods=("POST",))
+    def dev_pay(ctx):
+        if not S.dev_mode: raise ApiError(404, "Bulunamadı")
+        o = db.one("SELECT * FROM store_orders WHERE id=? AND user_id=?", (ctx.p["id"], ctx.user["id"]))
+        if not o: raise ApiError(404, "Sipariş yok")
+        return {"paid": order_paid(o["id"])}
+
+    # —— yönetici: gösterge yayınla/düzenle/sil ——
+    @route("/api/admin/store/{id:int}", role="admin")
+    def a_store_get(ctx):
+        r = db.one("SELECT * FROM store_items WHERE id=?", (ctx.p["id"],))
+        if not r: raise ApiError(404, "Gösterge bulunamadı")
+        sales = db.one("SELECT COUNT(*) AS n, COALESCE(SUM(amount_micro),0) AS s FROM store_orders WHERE item_id=? AND status='paid'", (r["id"],))
+        return {**store_row(r, ctx.user["id"], store_ctx(ctx.user["id"], True), full=True), "code": r["code"], "sales": sales["n"], "sales_micro": int(sales["s"])}
+
+    @route("/api/admin/store", methods=("POST",), role="admin")
+    def a_store_new(ctx):
+        try: d = C.store_clean(ctx.body)
+        except ValueError as e: raise ApiError(422, str(e))
+        t = now()
+        with db.tx():
+            db.x("INSERT INTO store_items (title, summary, description, code, image, audience, price_micro, asset, duration_days, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                 (d["title"], d["summary"], d["description"], d["code"], d.get("image", ""), d["audience"], d["price_micro"], d["asset"], d["duration_days"], d["status"], t, t))
+            iid = db.one("SELECT MAX(id) AS i FROM store_items")["i"]
+        audit(ctx.user["id"], "store_new", f"{iid} {d['title']}")
+        return {"id": iid}
+
+    @route("/api/admin/store/{id:int}", methods=("PUT",), role="admin")
+    def a_store_put(ctx):
+        r = db.one("SELECT * FROM store_items WHERE id=?", (ctx.p["id"],))
+        if not r: raise ApiError(404, "Gösterge bulunamadı")
+        body = dict(ctx.body)
+        if not body.get("code"): body["code"] = r["code"]  # kod boş bırakılırsa eskisi korunur
+        try: d = C.store_clean(body)
+        except ValueError as e: raise ApiError(422, str(e))
+        img = d["image"] if "image" in d else r["image"]
+        db.x("UPDATE store_items SET title=?, summary=?, description=?, code=?, image=?, audience=?, price_micro=?, asset=?, duration_days=?, status=?, updated_at=? WHERE id=?",
+             (d["title"], d["summary"], d["description"], d["code"], img, d["audience"], d["price_micro"], d["asset"], d["duration_days"], d["status"], now(), r["id"]))
+        audit(ctx.user["id"], "store_edit", r["id"])
+        return {"ok": True}
+
+    @route("/api/admin/store/{id:int}", methods=("DELETE",), role="admin")
+    def a_store_del(ctx):
+        iid = ctx.p["id"]
+        with db.tx():
+            for tb in ("store_likes", "store_access"): db.x(f"DELETE FROM {tb} WHERE item_id=?", (iid,))
+            n = db.x("DELETE FROM store_items WHERE id=?", (iid,))
+        audit(ctx.user["id"], "store_del", iid)
+        return {"ok": True}
 
     # ——— yayıncı ———
     def own_post_dict(r):

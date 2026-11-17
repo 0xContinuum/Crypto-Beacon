@@ -160,3 +160,10 @@ Pine çevirici önce hafif v1'i dener; tam çeviremezse kodu `//@beacon2` başl�
 - **Seviye Değme Olasılığı** şimdilik kapalı (`cards(X, {showTouch: true})` ile açılır).
 - **Uyarlanabilir Pi Cycle** ve **Hacim Coşku ve Teslimiyet** (Pro): eşikler ölçünün kendi son 4 yıllık yüzdeliğidir; kartta gerçek döngü tepe/diplerine karne ve yanlış alarm sayısı gösterilir.
 - **Kaldıraç Güvenlik Haritası** (Pro): N kat kaldıraçlı long/short likidasyon seviyesine 7/14/30 günde dokunma olasılığı (kalibre, sınaması kartta).
+
+## Gösterge Mağazası, ödeme ve reklam bekleme süresi
+
+- **Mağaza** (`web/js/store.js`, "Mağaza" çipi): yalnızca sahip gösterge ekler/düzenler (başlık, özet, açıklama, görsel, kod, hedef kitle: herkese açık / yayıncılara özel / Pro'ya özel, ücretsiz-ücretli, süre gün, 0 = süresiz). Kartta beğeni sayısı ve "Detay" (açıklama + görsel) vardır. Açık göstergeler hesaba eşitlenir (`st`).
+- Kod sunucudan oturum başına, erişim geçerliyken alınır; arayüzde gösterilmez ama ağ trafiğinden okunabilir (tam koruma değildir).
+- **Ödeme (USDT / GRAM=TON)**: Crypto Pay (@CryptoBot). Kurulum: @CryptoBot → Crypto Pay → uygulama oluştur → `CRYPTO_PAY_TOKEN` ortam değişkeni; webhook adresi `<PUBLIC_URL>/api/store/crypto-webhook`. Önce `CRYPTO_PAY_TESTNET=1` ile deneyin. Canlı API'ye karşı doğrulanmadı.
+- **Reklam bekleme**: `AD_COOLDOWN_SECONDS` (varsayılan 900 = 15 dk). Sunucu değişikliği için Vercel'i yeniden yayınlayın.

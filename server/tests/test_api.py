@@ -19,8 +19,19 @@ def free_port():
 class Api(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.INV = []
+        def pay(method, payload):
+            if method == "createInvoice":
+                cls.INV.append(payload); i = len(cls.INV)
+                return {"invoice_id": 900 + i, "status": "active", "mini_app_invoice_url": f"https://t.me/CryptoBot/app?startapp=inv{900 + i}", "bot_invoice_url": "https://t.me/CryptoBot?start=x"}
+            if method == "getInvoices":
+                ids = [int(x) for x in str(payload["invoice_ids"]).split(",")]
+                return {"items": [{"invoice_id": i, "status": cls.PAID.get(i, "active"), "asset": cls.INV[i - 901]["asset"]} for i in ids]}
+            raise AssertionError(method)
+        cls.PAID = {}
         S = C.Settings(bot_token="123:TESTTOKEN", database_url="sqlite:///:memory:", dev_mode=True, adsgram_secret="s3", clock=lambda: T0[0],
-                       tg=lambda m, p: SENT.append((m, p)), app_url="https://app.example")
+                       tg=lambda m, p: SENT.append((m, p)), app_url="https://app.example", ad_cooldown_seconds=0, crypto_pay_token="cptoken", pay_http=pay)
+        cls.S = S
         cls.app = create_app(S)
         cls.port = free_port()
         cls.srv = uvicorn.Server(uvicorn.Config(cls.app, host="127.0.0.1", port=cls.port, log_level="error"))
@@ -94,6 +105,116 @@ class Api(unittest.TestCase):
         self.err(400, "POST", "/api/me/photo", uid=U1, body={"image": "x"})
         for _ in range(5): self.ok("POST", "/api/me/photo", uid=U1, body={"image": PNG})
         self.err(429, "POST", "/api/me/photo", uid=U1, body={"image": PNG})
+
+
+    CODE = "//@beacon2\nindicator(\"Denge\", overlay=true)\nplot(close, \"c\")"
+
+    def mkitem(self, **kw):
+        d = {"title": "Beacon Denge Hattı", "summary": "Pivot bazlı VWAP bantları", "description": "Ayrıntılı açıklama", "code": self.CODE, "audience": "public", "price": "0", "asset": "USDT", "duration_days": 0}
+        d.update(kw); return self.ok("POST", "/api/admin/store", uid=ADMIN, body=d)["id"]
+
+    def hook(self, upd, token="cptoken", sig=None):
+        raw = json.dumps(upd).encode()
+        import hashlib, hmac as _h
+        sg = sig if sig is not None else _h.new(hashlib.sha256(token.encode()).digest(), raw, hashlib.sha256).hexdigest()
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/store/crypto-webhook", data=raw, method="POST", headers={"crypto-pay-api-signature": sg, "Content-Type": "application/json"})
+        try: r = urllib.request.urlopen(req)
+        except urllib.error.HTTPError as e: r = e
+        return r.status
+
+    def test_store_admin_and_visibility(self):
+        self.err(403, "POST", "/api/admin/store", uid=4001, body={"title": "x" * 5, "code": self.CODE})
+        self.err(422, "POST", "/api/admin/store", uid=ADMIN, body={"title": "ab", "code": self.CODE})
+        self.err(422, "POST", "/api/admin/store", uid=ADMIN, body={"title": "Geçerli ad", "code": "x"})
+        self.err(422, "POST", "/api/admin/store", uid=ADMIN, body={"title": "Geçerli ad", "code": self.CODE, "audience": "herkes"})
+        self.err(422, "POST", "/api/admin/store", uid=ADMIN, body={"title": "Geçerli ad", "code": self.CODE, "price": "-1"})
+        self.err(422, "POST", "/api/admin/store", uid=ADMIN, body={"title": "Geçerli ad", "code": self.CODE, "image": "data:image/png;base64,AAAA"})
+        pub = self.mkitem(title="Herkese açık"); pro = self.mkitem(title="Pro göstergesi", audience="pro"); br = self.mkitem(title="Yayıncı göstergesi", audience="broadcasters"); hid = self.mkitem(title="Gizli", status="hidden")
+        l = self.ok("GET", "/api/store", uid=4001); ids = {i["id"]: i for i in l["items"]}
+        self.assertIn(pub, ids); self.assertNotIn(hid, ids); self.assertFalse(l["admin"])
+        self.assertTrue(ids[pub]["allowed"]); self.assertFalse(ids[pro]["allowed"]); self.assertFalse(ids[br]["allowed"])
+        self.assertNotIn("code", ids[pub]); self.assertNotIn("description", ids[pub])
+        self.assertIn(hid, {i["id"]: i for i in self.ok("GET", "/api/store", uid=ADMIN)["items"]})
+        self.err(404, "GET", f"/api/store/{hid}", uid=4001)
+        d = self.ok("GET", f"/api/store/{pub}", uid=4001); self.assertEqual(d["description"], "Ayrıntılı açıklama"); self.assertNotIn("code", d)
+        self.err(401, "GET", "/api/store")
+        # güncelleme: kod boş bırakılırsa eskisi kalır
+        self.ok("PUT", f"/api/admin/store/{pub}", uid=ADMIN, body={"title": "Yeni ad", "summary": "s", "audience": "public", "price": "0", "duration_days": 0, "code": ""})
+        self.assertEqual(self.ok("GET", f"/api/admin/store/{pub}", uid=ADMIN)["code"], self.CODE)
+        self.err(403, "GET", f"/api/admin/store/{pub}", uid=4001)
+        # görsel
+        self.ok("PUT", f"/api/admin/store/{pub}", uid=ADMIN, body={"title": "Yeni ad", "summary": "s", "audience": "public", "price": "0", "duration_days": 0, "code": "", "image": PNG})
+        d = self.ok("GET", f"/api/store/{pub}", uid=4001); self.assertTrue(d["has_image"]); self.assertEqual(d["image"], PNG)
+        self.assertFalse(next(i for i in self.ok("GET", "/api/store", uid=4001)["items"] if i["id"] == pub).get("image"))
+        # Pro ve yayıncı kitlesi
+        self.ok("POST", "/api/admin/grants", uid=ADMIN, body={"user_id": U1, "days": 5}) if False else None
+        s = self.call("POST", f"/api/store/{pro}/claim", uid=4001)[0]; self.assertEqual(s, 403)
+        self.err(403, "GET", f"/api/store/{pro}/code", uid=4001)
+        self.assertEqual(self.ok("GET", f"/api/store/{pro}/code", uid=ADMIN)["code"], self.CODE)
+        self.ok("DELETE", f"/api/admin/store/{hid}", uid=ADMIN); self.err(404, "GET", f"/api/admin/store/{hid}", uid=ADMIN)
+
+    def test_store_like_claim_code(self):
+        iid = self.mkitem(title="Ücretsiz örnek")
+        self.err(403, "GET", f"/api/store/{iid}/code", uid=4002)
+        r = self.ok("POST", f"/api/store/{iid}/like", uid=4002); self.assertEqual((r["liked"], r["likes"]), (True, 1))
+        r = self.ok("POST", f"/api/store/{iid}/like", uid=4001); self.assertEqual(r["likes"], 2)
+        r = self.ok("POST", f"/api/store/{iid}/like", uid=4002); self.assertEqual((r["liked"], r["likes"]), (False, 1))
+        self.ok("POST", f"/api/store/{iid}/claim", uid=4002)
+        self.assertEqual(self.ok("GET", f"/api/store/{iid}/code", uid=4002)["code"], self.CODE)
+        it = next(i for i in self.ok("GET", "/api/store", uid=4002)["items"] if i["id"] == iid); self.assertTrue(it["owned"]); self.assertEqual(it["likes"], 1)
+
+    def test_store_paid_flow(self):
+        iid = self.mkitem(title="Ücretli gösterge", price="4.99", duration_days=30)
+        self.err(402, "POST", f"/api/store/{iid}/claim", uid=4001)
+        self.err(402, "GET", f"/api/store/{iid}/code", uid=4001)
+        r = self.ok("POST", f"/api/store/{iid}/buy", uid=4001); oid = r["order"]; self.assertIn("t.me/CryptoBot", r["pay_url"])
+        inv = self.INV[-1]; self.assertEqual((inv["asset"], inv["amount"], inv["payload"]), ("USDT", "4.99", str(oid)))
+        self.assertEqual(self.ok("POST", f"/api/store/{iid}/buy", uid=4001)["order"], oid)  # aynı bekleyen sipariş yeniden kullanılır
+        self.assertEqual(self.ok("GET", f"/api/store/order/{oid}", uid=4001)["status"], "pending")
+        self.err(404, "GET", f"/api/store/order/{oid}", uid=4002)
+        # imzasız / yanlış imzalı webhook reddedilir
+        upd = {"update_type": "invoice_paid", "payload": {"invoice_id": 900 + len(self.INV), "asset": "USDT", "amount": "4.99", "payload": str(oid)}}
+        self.assertEqual(self.hook(upd, sig="00"), 403); self.assertEqual(self.hook(upd, token="baska"), 403)
+        self.err(402, "GET", f"/api/store/{iid}/code", uid=4001)
+        # eksik tutar kabul edilmez
+        low = {"update_type": "invoice_paid", "payload": {**upd["payload"], "amount": "1"}}; self.assertEqual(self.hook(low), 200)
+        self.err(402, "GET", f"/api/store/{iid}/code", uid=4001)
+        # doğru imza + tutar: erişim açılır (30 gün)
+        self.assertEqual(self.hook(upd), 200)
+        d = self.ok("GET", f"/api/store/{iid}/code", uid=4001); self.assertEqual(d["until"], T0[0] + 30 * 86400)
+        self.assertEqual(self.ok("GET", f"/api/store/order/{oid}", uid=4001)["status"], "paid")
+        self.assertEqual(self.hook(upd), 200)  # tekrar gelen bildirim süreyi uzatmaz
+        self.assertEqual(self.ok("GET", f"/api/store/{iid}/code", uid=4001)["until"], T0[0] + 30 * 86400)
+        # süre dolunca kod kapanır, yenileme sürenin üstüne eklenir
+        T0[0] += 31 * 86400
+        self.err(402, "GET", f"/api/store/{iid}/code", uid=4001)
+        r = self.ok("POST", f"/api/store/{iid}/buy", uid=4001); oid2 = r["order"]; self.assertNotEqual(oid2, oid)
+        self.PAID[900 + len(self.INV)] = "paid"  # webhook gecikti: sipariş sorgulaması sağlayıcıdan doğrular
+        self.assertEqual(self.ok("GET", f"/api/store/order/{oid2}", uid=4001)["status"], "paid")
+        self.assertEqual(self.ok("GET", f"/api/store/{iid}/code", uid=4001)["until"], T0[0] + 30 * 86400)
+        self.assertTrue(any(m == "sendMessage" and "Ödemeniz alındı" in p.get("text", "") for m, p in SENT))
+        # GRAM (TON) ile ücretli
+        g = self.mkitem(title="GRAM'lı gösterge", price="12.5", asset="TON", duration_days=0)
+        self.ok("POST", f"/api/store/{g}/buy", uid=4002); self.assertEqual((self.INV[-1]["asset"], self.INV[-1]["amount"]), ("TON", "12.5"))
+        # ücretsiz gösterge satın alınamaz; Pro'ya özel ücretli Pro olmayana satılmaz
+        self.err(400, "POST", f"/api/store/{self.mkitem(title='Bedava')}/buy", uid=4001)
+        self.err(403, "POST", f"/api/store/{self.mkitem(title='Pro ücretli', price='2', audience='pro', duration_days=7)}/buy", uid=4001)
+
+    def test_zz_ad_cooldown(self):
+        p = self.ok("POST", "/api/me/profile", uid=B1, body={}) if False else None
+        self.S.ad_cooldown_seconds = 900
+        try:
+            T0[0] += 86400
+            sid = self.ok("POST", "/api/ads/start", uid=3001, body={"placement": "pro_owner"})["session"]
+            self.ok("POST", "/api/dev/reward", uid=3001)
+            self.assertEqual(self.ok("GET", f"/api/ads/status?session={sid}", uid=3001)["status"], "verified")
+            e = self.err(429, "POST", "/api/ads/start", uid=3001, body={"placement": "pro_owner"}); self.assertEqual(e["retry_after"], 900)
+            self.assertEqual(self.ok("GET", "/api/me", uid=3001)["ads"]["wait_seconds"], 900)
+            T0[0] += 600; self.assertEqual(self.err(429, "POST", "/api/ads/start", uid=3001, body={"placement": "pro_owner"})["retry_after"], 300)
+            T0[0] += 301; self.ok("POST", "/api/ads/start", uid=3001, body={"placement": "pro_owner"})
+            self.assertEqual(self.ok("GET", "/api/me", uid=3002)["ads"]["wait_seconds"], 0)  # başka kullanıcı etkilenmez
+        finally:
+            self.S.ad_cooldown_seconds = 0
 
     def test_sync(self):
         self.err(401, "GET", "/api/me/sync")

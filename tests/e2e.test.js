@@ -13,7 +13,7 @@ const call = async (m, p, uid, body) => { const r = await fetch(API + p, { metho
   let browser;
   const db = path.join(require('os').tmpdir(), 'beacon_e2e_' + Date.now() + '.db');
   const srv = spawn('python3', ['-I', '-m', 'uvicorn', 'server.app:default_app', '--factory', '--port', String(API_PORT), '--log-level', 'error'],
-    { cwd: ROOT, env: { ...process.env, PYTHONPATH: ROOT, DEV_MODE: '1', BOT_TOKEN: '111:E2ETOKEN', TG_OFFLINE: '1', DATABASE_URL: 'sqlite:///' + db, ADSGRAM_SECRET: 'x' }, stdio: 'inherit' });
+    { cwd: ROOT, env: { ...process.env, PYTHONPATH: ROOT, DEV_MODE: '1', BOT_TOKEN: '111:E2ETOKEN', TG_OFFLINE: '1', DATABASE_URL: 'sqlite:///' + db, ADSGRAM_SECRET: 'x', AD_COOLDOWN_SECONDS: '0' }, stdio: 'inherit' });
   const web = http.createServer((q, s) => {
     let f = path.join(WEB, decodeURIComponent(q.url.split('?')[0])); if (f.endsWith('/')) f += 'index.html';
     if (!f.startsWith(WEB) || !fs.existsSync(f)) { s.writeHead(404); return s.end(); }

@@ -434,3 +434,18 @@ body.fsmode { overflow: hidden; }
 .dbtn .dash { display: block; width: 18px; border-top: 2px dashed currentColor; }
 @media (max-width: 480px) { .dbar { left: 50px; right: 6px; margin: 0; width: auto; max-width: none; } }
 
+
+/* Gösterge Mağazası */
+.stc { border: 1px solid var(--rule); border-radius: 14px; padding: 12px; margin-top: 10px; }
+.sth { display: flex; align-items: center; gap: 6px; font-size: 16px; }
+.stb { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.stbadge { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--rule); color: var(--mist); }
+.stbadge.paid { color: var(--beam); border-color: var(--beam); }
+.str { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.stlike { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--rule); color: var(--mist); font-weight: 600; }
+.stlike.on { color: #ff5a6e; border-color: #ff5a6e; }
+.cta.sm { min-height: 44px; font-size: 14px; margin-top: 8px; }
+.stimg { display: block; width: 100%; max-height: 320px; object-fit: contain; border-radius: 12px; margin: 10px 0; background: #0003; }
+.stdesc { white-space: pre-wrap; font-size: 14px; line-height: 1.55; margin: 8px 0; }
+.sfrow { display: flex; gap: 8px; flex-wrap: wrap; } .sfrow label { flex: 1 1 120px; }
+#stSheet .panel, #stDet .panel, #stForm .panel { max-height: 88vh; overflow-y: auto; }
